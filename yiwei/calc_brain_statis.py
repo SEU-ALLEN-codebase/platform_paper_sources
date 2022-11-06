@@ -36,7 +36,8 @@ def cal_signal_ratio(signal_region_csv,mask_region):
 def brain_signal_statistics(signal_region_csv):
     signal_statistics = np.zeros(2654)
     signal_region_count = sum(signal_region_csv['count'].iloc[1:])
-    signal_statistics [(signal_region_csv['region'][1:]-1).tolist()]  = signal_region_csv['count'][1:].tolist() / signal_region_count
+    new_list = [x/signal_region_count for x in signal_region_csv['count'][1:].tolist()]
+    signal_statistics [(signal_region_csv['region'][1:]-1).tolist()]  = new_list
     return signal_statistics
 
 def signal_ratio_plot(signal_region_path, mask_region_path, outpath):
@@ -44,13 +45,15 @@ def signal_ratio_plot(signal_region_path, mask_region_path, outpath):
     x_label = []
     for signal_file in glob.glob(os.path.join(signal_region_path, f'*.csv')):
         signal_region_csv = pd.read_csv(signal_file)
-        brain_id = signal_file.split('.')[0]
-        mask_region = load_image(mask_region_path + brain_id + '.v3draw')
+        brain_id = os.path.split(signal_file)[-1].split('.')[0]
+        print(brain_id)
+        print(mask_region_path +'/'+ brain_id + '.v3draw')
+        mask_region = load_image(mask_region_path +'/'+ brain_id + '.v3draw')
         signal_ratio = cal_signal_ratio(signal_region_csv,mask_region)
         result.append(signal_ratio)
         x_label.append(brain_id)
-    X_ticks = np.arrange(0,len(result)) 
-    plt.plot(X_ticks,result)
+    X_ticks = np.arange(0,len(result)) 
+    plt.plot(X_ticks,result,linestyle='')
     plt.xticks(X_ticks,x_label)
     plt.ylabel('signal_ratio')
     plt.savefig(outpath+'/signal_ratio_plot.png',dpi=300)
@@ -61,11 +64,14 @@ def region_brainid_plot(signal_region_path, outpath):
     x_label = []
     for signal_file in glob.glob(os.path.join(signal_region_path, f'*.csv')):
         signal_region_csv = pd.read_csv(signal_file)
-        brain_id = signal_file.split('.')[0]
+        brain_id = os.path.split(signal_file)[-1].split('.')[0]
         result.append(brain_signal_statistics(signal_region_csv))
         x_label.append(brain_id)
-    X_ticks = np.arrange(0,len(x_label)) 
-    sns.heatmap(result.transpose())
+    X_ticks = np.arange(0,len(x_label))
+    
+    result = np.array(result) 
+
+    sns.heatmap(result.transpose(),center=0.01)
     plt.xticks(X_ticks,x_label)
     plt.ylabel('brain_region')
     plt.savefig(outpath+'/region_brainid_plot.png',dpi=300)
@@ -311,29 +317,32 @@ if __name__ == '__main__':
     filesize_thresh = 1.7
     vmax_thresh = 400
     nproc = 4
-    
+    signal_region_path = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic'
+    fig_outpath = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic_fig'
+    region_brainid_plot(signal_region_path,fig_outpath)
+    signal_ratio_plot(signal_region_path,mask_file_dir,fig_outpath)
  
-    if not os.path.exists(out_dir):
-        os.mkdir(out_dir)
+    # if not os.path.exists(out_dir):
+    #     os.mkdir(out_dir)
    
-    dim_f = pd.read_csv(tera_downsize_file, index_col='ID')
-    args_list = []
-    i = 0 
-    for tera_dir in glob.glob(os.path.join(tera_path, f'mouse[1-9]*[0-9]*')):
-        brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
-        max_res_dims = np.array([dim_f.loc[brain_id][0],dim_f.loc[brain_id][1],dim_f.loc[brain_id][2]])
-        mask_dims = np.array([dim_f.loc[brain_id][3],dim_f.loc[brain_id][4],dim_f.loc[brain_id][5]])
+    # dim_f = pd.read_csv(tera_downsize_file, index_col='ID')
+    # args_list = []
+    # i = 0 
+    # for tera_dir in glob.glob(os.path.join(tera_path, f'mouse[1-9]*[0-9]*')):
+    #     brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
+    #     max_res_dims = np.array([dim_f.loc[brain_id][0],dim_f.loc[brain_id][1],dim_f.loc[brain_id][2]])
+    #     mask_dims = np.array([dim_f.loc[brain_id][3],dim_f.loc[brain_id][4],dim_f.loc[brain_id][5]])
         
-        args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, vmax_thresh
-        i = i+1
-        if i >=113:
-            args_list.append(args)
+    #     args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, vmax_thresh
+    #     i = i+1
+    #     if i >=113:
+    #         args_list.append(args)
               
-    print(f'Number of brains to process: {len(args_list)}')
-    pt = Pool(nproc)
-    pt.starmap(brain_statis_wrapper, args_list)
-    pt.close()
-    pt.join()
+    # print(f'Number of brains to process: {len(args_list)}')
+    # pt = Pool(nproc)
+    # pt.starmap(brain_statis_wrapper, args_list)
+    # pt.close()
+    # pt.join()
     
     
     # brain_id1 = ['196472','15702','18455','18872','182712','201606','236174']
