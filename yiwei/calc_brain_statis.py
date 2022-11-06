@@ -21,11 +21,96 @@ import pandas as pd
 import csv
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+from skimage import filters
+import seaborn as sns
 from file_io import load_image, save_image, get_tera_res_path
 from image_utils import get_mip_image
 
+def cal_signal_ratio(signal_region_csv,mask_region):
+    brain_region_count = np.count_nonzero(mask_region)
+    signal_region_count = sum(signal_region_csv['count'].iloc[1:])
+    signal_ratio = signal_region_count / brain_region_count
 
+    return signal_ratio
+    
+def brain_signal_statistics(signal_region_csv):
+    signal_statistics = np.zeros(2654)
+    signal_region_count = sum(signal_region_csv['count'].iloc[1:])
+    signal_statistics [(signal_region_csv['region'][1:]-1).tolist()]  = signal_region_csv['count'][1:].tolist() / signal_region_count
+    return signal_statistics
+
+def signal_ratio_plot(signal_region_path, mask_region_path, outpath):
+    result = []
+    x_label = []
+    for signal_file in glob.glob(os.path.join(signal_region_path, f'*.csv')):
+        signal_region_csv = pd.read_csv(signal_file)
+        brain_id = signal_file.split('.')[0]
+        mask_region = load_image(mask_region_path + brain_id + '.v3draw')
+        signal_ratio = cal_signal_ratio(signal_region_csv,mask_region)
+        result.append(signal_ratio)
+        x_label.append(brain_id)
+    X_ticks = np.arrange(0,len(result)) 
+    plt.plot(X_ticks,result)
+    plt.xticks(X_ticks,x_label)
+    plt.ylabel('signal_ratio')
+    plt.savefig(outpath+'/signal_ratio_plot.png',dpi=300)
+
+def region_brainid_plot(signal_region_path, outpath): 
+    result = []
+    y_label = []   
+    x_label = []
+    for signal_file in glob.glob(os.path.join(signal_region_path, f'*.csv')):
+        signal_region_csv = pd.read_csv(signal_file)
+        brain_id = signal_file.split('.')[0]
+        result.append(brain_signal_statistics(signal_region_csv))
+        x_label.append(brain_id)
+    X_ticks = np.arrange(0,len(x_label)) 
+    sns.heatmap(result.transpose())
+    plt.xticks(X_ticks,x_label)
+    plt.ylabel('brain_region')
+    plt.savefig(outpath+'/region_brainid_plot.png',dpi=300)
+
+def testify_threshold(tera_dir, res_id=-3, threshold=400,step=4,sep=100, outdir=None):
+    np.random.seed(1024)
+    res_path = get_tera_res_path(tera_dir, res_id, False)
+    fsizes = []
+    counter = 0
+    t0 = time.time()
+    for imgfile in glob.glob(os.path.join(res_path, '*/*/[0-9]*[0-9].tif')):
+        fs = os.path.getsize(imgfile) / 1000. / 1000.
+        fsizes.append(fs)
+
+        # randomly save 2D MIP images for checking and debugging
+        output_min_size = 0.4
+        output_max_size = 10.0
+        prob = 0.2
+        if (fs < output_max_size) and (fs > output_min_size):
+            if np.random.random() < prob:
+                img = load_image(imgfile)
+                img = filters.gaussian(img, (1,3,3), preserve_range=True)
+                img2d = get_mip_image(img)
+                max_pv = img2d.max()
+                min_pv = img2d.min()
+                # print(img2d.shape)
+                if max_pv>300:
+                    img_threshold = np.zeros((img2d.shape[0],(step+1)*img2d.shape[1]),dtype = np.uint8)  
+                    for i in range(0,step):
+                        img_tmp = np.zeros(img2d.shape,dtype = np.uint8)
+                        img_tmp[ img2d > (threshold+sep*i) ] = 255 
+                        img_threshold[:,(i+1)*img2d.shape[1]:(i+2)*img2d.shape[1]] = img_tmp  
+                    # print(img_threshold.shape)         
+                    img2d = ((img2d - min_pv) / (max_pv - min_pv + 1e-10) * 255).astype(np.uint8)
+                    img_threshold[:,0:img2d.shape[1]] = img2d              
+                    fname = os.path.split(imgfile)[-1]
+                    prefix = os.path.splitext(fname)[0]
+                    outfile = os.path.join(outdir, f'{prefix}_fs{fs:.3f}_vmax{max_pv}_vmin{min_pv}_threshold400.png')
+                    # save_image(outfile, img2d)
+                    save_image(outfile, img_threshold)
+
+        counter += 1
+        if counter % 100 == 0:
+            print(f'--> Processed {counter} files in {time.time() - t0:.4f} seconds')
+            
 def get_filesize(tera_dir, res_id=-3, threshold=300, outdir=None):
     np.random.seed(1024)
 
@@ -45,7 +130,7 @@ def get_filesize(tera_dir, res_id=-3, threshold=300, outdir=None):
             if np.random.random() < prob:
                 img = load_image(imgfile)
                 img2d = get_mip_image(img)
-                img_threshold = np.zeros(img2d.shape,dtype = np.uint8)
+                img_threshold = np.zeros(img2d.shape[0],dtype = np.uint8)
                 img_threshold[ img2d > threshold ]=255
                 
                 max_pv = img2d.max()
@@ -215,50 +300,51 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
 
 
 if __name__ == '__main__':
-    # from multiprocessing.pool import Pool
+    from multiprocessing.pool import Pool
 
-    # tera_downsize_file = 'D:/22spring/cal_brain_stats/pylib-main/TeraDownsampleSize.csv'
-    # tera_path = 'Z:/TeraconvertedBrain'
-    # mask_file_dir = 'Z:/SEU-ALLEN/Users/ZhixiYun/data/registration/Inverse'
-    # out_dir = 'D:/22spring/cal_brain_stats/pylib-main/brain_counter'
-    # threshold = 300
-    # res_ids = -3
-    # filesize_thresh = 1.7
-    # vmax_thresh = 300
-    # nproc = 4
+    tera_downsize_file = 'D:/22spring/cal_brain_stats/pylib-main/TeraDownsampleSize.csv'
+    tera_path = 'Z:/TeraconvertedBrain'
+    mask_file_dir = 'Z:/SEU-ALLEN/Users/ZhixiYun/data/registration/Inverse'
+    out_dir = 'D:/22spring/cal_brain_stats/pylib-main/brain_counter'
+    threshold = 300
+    res_ids = -3
+    filesize_thresh = 1.7
+    vmax_thresh = 400
+    nproc = 4
     
  
-    # if not os.path.exists(out_dir):
-    #     os.mkdir(out_dir)
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
    
-    # dim_f = pd.read_csv(tera_downsize_file, index_col='ID')
-    # args_list = []
-    # i = 0 
-    # for tera_dir in glob.glob(os.path.join(tera_path, f'mouse[1-9]*[0-9]*')):
-    #     brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
-    #     max_res_dims = np.array([dim_f.loc[brain_id][0],dim_f.loc[brain_id][1],dim_f.loc[brain_id][2]])
-    #     mask_dims = np.array([dim_f.loc[brain_id][3],dim_f.loc[brain_id][4],dim_f.loc[brain_id][5]])
+    dim_f = pd.read_csv(tera_downsize_file, index_col='ID')
+    args_list = []
+    i = 0 
+    for tera_dir in glob.glob(os.path.join(tera_path, f'mouse[1-9]*[0-9]*')):
+        brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
+        max_res_dims = np.array([dim_f.loc[brain_id][0],dim_f.loc[brain_id][1],dim_f.loc[brain_id][2]])
+        mask_dims = np.array([dim_f.loc[brain_id][3],dim_f.loc[brain_id][4],dim_f.loc[brain_id][5]])
         
-    #     args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, vmax_thresh
-    #     i = i+1
-    #     if i >=8:
-    #         args_list.append(args)
+        args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, vmax_thresh
+        i = i+1
+        if i >=113:
+            args_list.append(args)
               
-    # print(f'Number of brains to process: {len(args_list)}')
-    # pt = Pool(nproc)
-    # pt.starmap(brain_statis_wrapper, args_list)
-    # pt.close()
-    # pt.join()
+    print(f'Number of brains to process: {len(args_list)}')
+    pt = Pool(nproc)
+    pt.starmap(brain_statis_wrapper, args_list)
+    pt.close()
+    pt.join()
     
     
-    brain_id = '196472'
-    tera_dir = f'Z:/TeraconvertedBrain/mouse{brain_id}_teraconvert'
-    outdir = f'D:/22spring/cal_brain_stats/pylib-main/brain_mip{brain_id}/mip2d/'
+    # brain_id1 = ['196472','15702','18455','18872','182712','201606','236174']
+    # for brain_id in brain_id1:
+    #     tera_dir = f'Z:/TeraconvertedBrain/mouse{brain_id}_teraconvert'
+    #     outdir = f'Z:/SEU-ALLEN/Users/YiweiLi/brain_mip/{brain_id}/mip2d/'
 
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-    
-    get_filesize(tera_dir, -3,350, outdir=outdir)
+    #     if not os.path.exists(outdir):
+    #         os.makedirs(outdir)
+        
+    #     testify_threshold(tera_dir, -3,400,4,100,outdir=outdir)
 
 
 
