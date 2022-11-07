@@ -26,55 +26,95 @@ import seaborn as sns
 from file_io import load_image, save_image, get_tera_res_path
 from image_utils import get_mip_image
 
-def cal_signal_ratio(signal_region_csv,mask_region):
-    brain_region_count = np.count_nonzero(mask_region)
-    signal_region_count = sum(signal_region_csv['count'].iloc[1:])
-    signal_ratio = signal_region_count / brain_region_count
 
+
+def cal_signal_ratio(signal_region_csv,mask_region,brain_multiple):
+    brain_region_count = np.count_nonzero(mask_region)
+    # signal_region = np.zeros(mask_region.shape,dtype=np.uint8)
+    # region_statistics = np.zeros(2654+1)
+    # for brain_id in range(1,2654):
+    #     region_statistics[brain_id] = np.sum(mask_region == brain_id)
+    #     print(brain_id)
+    # signal_region_count = 0
+    # for region_id in signal_region_csv['region'].iloc[1:]:
+    #     signal_region_count = signal_region_count + np.sum(mask_region == region_id)
+    #     print(region_id)
+    # signal_region_count = np.count_nonzero(signal_region)
+    signal_region_count = np.sum(signal_region_csv['count'].iloc[1:])/brain_multiple   
+    signal_ratio = signal_region_count / brain_region_count
+    print(signal_ratio,brain_multiple)
     return signal_ratio
     
 def brain_signal_statistics(signal_region_csv):
-    signal_statistics = np.zeros(2654)
+    signal_statistics = np.zeros(2654) # there are 2654 kinds of brain_region 
     signal_region_count = sum(signal_region_csv['count'].iloc[1:])
     new_list = [x/signal_region_count for x in signal_region_csv['count'][1:].tolist()]
     signal_statistics [(signal_region_csv['region'][1:]-1).tolist()]  = new_list
     return signal_statistics
 
-def signal_ratio_plot(signal_region_path, mask_region_path, outpath):
+def signal_ratio_plot(signal_region_path, mask_region_path, outpath,tera_downsize_file):
     result = []
     x_label = []
-    for signal_file in glob.glob(os.path.join(signal_region_path, f'*.csv')):
-        signal_region_csv = pd.read_csv(signal_file)
-        brain_id = os.path.split(signal_file)[-1].split('.')[0]
-        print(brain_id)
-        print(mask_region_path +'/'+ brain_id + '.v3draw')
-        mask_region = load_image(mask_region_path +'/'+ brain_id + '.v3draw')
-        signal_ratio = cal_signal_ratio(signal_region_csv,mask_region)
-        result.append(signal_ratio)
-        x_label.append(brain_id)
-    X_ticks = np.arange(0,len(result)) 
-    plt.plot(X_ticks,result,linestyle='')
-    plt.xticks(X_ticks,x_label)
-    plt.ylabel('signal_ratio')
+    
+    if os.path.exists(outpath+'/signal_ratio.csv'):
+        result = pd.read_csv(outpath+'/signal_ratio.csv')
+        x_label = pd.read_csv(outpath+'/brain_id.csv')
+    else:
+        dim_f = pd.read_csv(tera_downsize_file, index_col='ID')
+        for signal_file in glob.glob(os.path.join(signal_region_path, f'*.csv')):
+            signal_region_csv = pd.read_csv(signal_file)
+            brain_id = os.path.split(signal_file)[-1].split('.')[0]
+            mask_region = load_image(mask_region_path +'/'+ brain_id + '.v3draw')  
+            brain_id = int(brain_id)
+            brain_multiple = (dim_f.loc[brain_id][0]/dim_f.loc[brain_id][3])*(dim_f.loc[brain_id][1]/dim_f.loc[brain_id][4])*(dim_f.loc[brain_id][2]/dim_f.loc[brain_id][5])
+            signal_ratio = cal_signal_ratio(signal_region_csv,mask_region,brain_multiple)
+            result.append(signal_ratio)
+            x_label.append(brain_id)
+            print(brain_id)
+            # print(brain_id)
+        result = pd.DataFrame(result,columns=['signal_ratio'])
+        x_label = pd.DataFrame(x_label,columns=['brain_id'])
+        result.to_csv(outpath+'/signal_ratio.csv',index=None)
+        x_label.to_csv(outpath+'/brain_id.csv',index=None)          
+    # print(result)
+    X_ticks = np.arange(0,len(result['signal_ratio'])) 
+    print(X_ticks)
+    print(x_label['brain_id'])
+    # y_labels = np.arange(0,0.4,0.05)
+    # y_ticks = np.arange(0,0.4/100,0.05/100) 
+    plt.bar(X_ticks,result['signal_ratio'],color = '#04d8b2')
+    # plt.plot(X_ticks,np.log(result['signal_ratio']), linestyle='--', marker='*', markersize=2, linewidth=0.5)
+    plt.xticks(X_ticks,x_label['brain_id'],rotation=90,fontdict={'fontsize':3})
+    # plt.yticks(y_ticks,labels=y_labels)
+    plt.ylabel('signal_ratio (log10)')  
     plt.savefig(outpath+'/signal_ratio_plot.png',dpi=300)
+    plt.close()
 
 def region_brainid_plot(signal_region_path, outpath): 
-    result = []
+    
     y_label = []   
     x_label = []
-    for signal_file in glob.glob(os.path.join(signal_region_path, f'*.csv')):
-        signal_region_csv = pd.read_csv(signal_file)
-        brain_id = os.path.split(signal_file)[-1].split('.')[0]
-        result.append(brain_signal_statistics(signal_region_csv))
-        x_label.append(brain_id)
+    if os.path.exists(outpath+'/brain_signal_statistics.csv'):
+        result = pd.read_csv(outpath+'/brain_signal_statistics.csv')
+        x_label = pd.read_csv(outpath+'/brain_id.csv')
+    else:
+        result = []
+        for signal_file in glob.glob(os.path.join(signal_region_path, f'*.csv')):
+            signal_region_csv = pd.read_csv(signal_file)
+            brain_id = os.path.split(signal_file)[-1].split('.')[0]
+            result.append(brain_signal_statistics(signal_region_csv))
+            x_label.append(brain_id)
+        result = pd.DataFrame(result)
+        x_label = pd.DataFrame(x_label,columns=['brain_id'])
+        result.to_csv(outpath+'/brain_signal_statistics.csv',index=None)
+        x_label.to_csv(outpath+'/brain_id.csv',index=None)
     X_ticks = np.arange(0,len(x_label))
-    
     result = np.array(result) 
-
     sns.heatmap(result.transpose(),center=0.01)
     plt.xticks(X_ticks,x_label)
     plt.ylabel('brain_region')
     plt.savefig(outpath+'/region_brainid_plot.png',dpi=300)
+    plt.close()
 
 def testify_threshold(tera_dir, res_id=-3, threshold=400,step=4,sep=100, outdir=None):
     np.random.seed(1024)
@@ -319,9 +359,10 @@ if __name__ == '__main__':
     nproc = 4
     signal_region_path = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic'
     fig_outpath = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic_fig'
+
+    signal_ratio_plot(signal_region_path,mask_file_dir,fig_outpath,tera_downsize_file)
     region_brainid_plot(signal_region_path,fig_outpath)
-    signal_ratio_plot(signal_region_path,mask_file_dir,fig_outpath)
- 
+    
     # if not os.path.exists(out_dir):
     #     os.mkdir(out_dir)
    
