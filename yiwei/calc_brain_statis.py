@@ -110,8 +110,8 @@ def region_brainid_plot(signal_region_path, outpath):
         x_label.to_csv(outpath+'/brain_id.csv',index=None)
     X_ticks = np.arange(0,len(x_label))
     result = np.array(result) 
-    sns.heatmap(result.transpose(),center=0.01)
-    plt.xticks(X_ticks,x_label)
+    sns.heatmap(result.transpose(),center=0.01,xticklabels=x_label['brain_id'],yticklabels=x_label['brain_id'])
+    # plt.xticks(X_ticks,x_label)
     plt.ylabel('brain_region')
     plt.savefig(outpath+'/region_brainid_plot.png',dpi=300)
     plt.close()
@@ -360,7 +360,7 @@ if __name__ == '__main__':
     signal_region_path = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic'
     fig_outpath = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic_fig'
 
-    signal_ratio_plot(signal_region_path,mask_file_dir,fig_outpath,tera_downsize_file)
+    # signal_ratio_plot(signal_region_path,mask_file_dir,fig_outpath,tera_downsize_file)
     region_brainid_plot(signal_region_path,fig_outpath)
     
     # if not os.path.exists(out_dir):
