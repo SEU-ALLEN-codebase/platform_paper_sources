@@ -138,7 +138,7 @@ def testify_threshold(tera_dir, res_id=-3, threshold=400,step=4,sep=100, outdir=
                 max_pv = img2d.max()
                 min_pv = img2d.min()
                 # print(img2d.shape)
-                if max_pv>300:
+                if max_pv>threshold:
                     img_threshold = np.zeros((img2d.shape[0],(step+1)*img2d.shape[1]),dtype = np.uint8)  
                     for i in range(0,step):
                         img_tmp = np.zeros(img2d.shape,dtype = np.uint8)
@@ -149,7 +149,7 @@ def testify_threshold(tera_dir, res_id=-3, threshold=400,step=4,sep=100, outdir=
                     img_threshold[:,0:img2d.shape[1]] = img2d              
                     fname = os.path.split(imgfile)[-1]
                     prefix = os.path.splitext(fname)[0]
-                    outfile = os.path.join(outdir, f'{prefix}_fs{fs:.3f}_vmax{max_pv}_vmin{min_pv}_threshold400.png')
+                    outfile = os.path.join(outdir, f'{prefix}_fs{fs:.3f}_vmax{max_pv}_vmin{min_pv}_threshold{threshold}.png')
                     # save_image(outfile, img2d)
                     save_image(outfile, img_threshold)
 
@@ -262,15 +262,14 @@ class CalcBrainStatis(object):
         fg_pos = np.nonzero(img_bin)
 
         pos_mapped_z = np.round((fg_pos[0] * self.multiplier  + start_res[2]/10) / self.coord_factor[2]).astype(np.int32)
-
-        # pos_mapped_z = np.clip(pos_mapped_z, 0, self.mask_dims[2]-1)
+        pos_mapped_z = np.clip(pos_mapped_z, 0, self.mask_dims[2]-1)
         pos_mapped_y = np.round((fg_pos[1] * self.multiplier  + start_res[0]/10) / self.coord_factor[0]).astype(np.int32)
-        # pos_mapped_y = np.clip(pos_mapped_y, 0, self.mask_dims[0]-1)
+        pos_mapped_y = np.clip(pos_mapped_y, 0, self.mask_dims[0]-1)
         pos_mapped_x = np.round((fg_pos[2] * self.multiplier  + start_res[1]/10) / self.coord_factor[1]).astype(np.int32)
-        # pos_mapped_x = np.clip(pos_mapped_x, 0, self.mask_dims[1]-1)
+        pos_mapped_x = np.clip(pos_mapped_x, 0, self.mask_dims[1]-1)
         
         #save_mask[0,pos_mapped_z-1, pos_mapped_y-1, pos_mapped_x-1] = self.region_mask[0, pos_mapped_z-1, pos_mapped_y-1, pos_mapped_x-1]
-        regions = self.region_mask[0, pos_mapped_z-1, pos_mapped_y-1, pos_mapped_x-1]
+        regions = self.region_mask[0, pos_mapped_z, pos_mapped_y, pos_mapped_x]
         mask_id0_idx = np.where(regions==0)
         print("mask_id ==0, [z, y, x]:", [pos_mapped_z[mask_id0_idx], pos_mapped_y[mask_id0_idx], pos_mapped_x[mask_id0_idx]])
             
@@ -351,7 +350,7 @@ if __name__ == '__main__':
     tera_downsize_file = 'D:/22spring/cal_brain_stats/pylib-main/TeraDownsampleSize.csv'
     tera_path = 'Z:/TeraconvertedBrain'
     mask_file_dir = 'Z:/SEU-ALLEN/Users/ZhixiYun/data/registration/Inverse'
-    out_dir = 'D:/22spring/cal_brain_stats/pylib-main/brain_counter'
+    out_dir = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic'
     threshold = 300
     res_ids = -3
     filesize_thresh = 1.7
@@ -359,9 +358,10 @@ if __name__ == '__main__':
     nproc = 4
     signal_region_path = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic'
     fig_outpath = 'Z:/SEU-ALLEN/Users/YiweiLi/Projects/platform_paper/brain_statistic_fig'
-
+    C=[17109, 17300, 17301, 17302, 17304, 18467, 18468, 18469, 18470]
+    
     # signal_ratio_plot(signal_region_path,mask_file_dir,fig_outpath,tera_downsize_file)
-    region_brainid_plot(signal_region_path,fig_outpath)
+    # region_brainid_plot(signal_region_path,fig_outpath)
     
     # if not os.path.exists(out_dir):
     #     os.mkdir(out_dir)
@@ -375,9 +375,8 @@ if __name__ == '__main__':
     #     mask_dims = np.array([dim_f.loc[brain_id][3],dim_f.loc[brain_id][4],dim_f.loc[brain_id][5]])
         
     #     args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, vmax_thresh
-    #     i = i+1
-    #     if i >=113:
-    #         args_list.append(args)
+    #     # if brain_id in C:
+    #     args_list.append(args)
               
     # print(f'Number of brains to process: {len(args_list)}')
     # pt = Pool(nproc)
@@ -387,14 +386,24 @@ if __name__ == '__main__':
     
     
     # brain_id1 = ['196472','15702','18455','18872','182712','201606','236174']
-    # for brain_id in brain_id1:
-    #     tera_dir = f'Z:/TeraconvertedBrain/mouse{brain_id}_teraconvert'
-    #     outdir = f'Z:/SEU-ALLEN/Users/YiweiLi/brain_mip/{brain_id}/mip2d/'
+    brain_id1 = ['191813']
+    for brain_id in brain_id1:
+        tera_dir = f'Z:/TeraconvertedBrain/mouse{brain_id}_teraconvert'
+        outdir = f'Z:/SEU-ALLEN/Users/YiweiLi/brain_mip/{brain_id}/mip2d/'
 
-    #     if not os.path.exists(outdir):
-    #         os.makedirs(outdir)
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
         
-    #     testify_threshold(tera_dir, -3,400,4,100,outdir=outdir)
-
+        testify_threshold(tera_dir, -3,1000,4,200,outdir=outdir)
+    # B=[]
+    
+    # for A in glob.glob(os.path.join(out_dir, f'*.csv')):
+    #     B.append(int(os.path.split(A)[-1].split('.')[0]))
+    # for tera_dir in glob.glob(os.path.join(tera_path, f'mouse[1-9]*[0-9]*')):
+    #     brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
+    #     if(brain_id not in B):
+    #         print(brain_id)
+    #         C.append(brain_id)
+    # print(C)
 
 
