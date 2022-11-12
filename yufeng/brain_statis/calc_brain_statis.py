@@ -316,19 +316,19 @@ if __name__ == '__main__':
         elif source == 'fMOST-Huang':
             brain_folder = os.path.split(os.path.split(tera_dir)[0])[-1]
             brain_id = int(brain_folder[-6:])
-            if brain_id == 190892:
-                continue    # The brain has no inverse mask at the present
             res_path = get_tera_res_path(tera_dir, res_ids, False)
             max_res_dims = np.array(list(map(int, res_path.split('RES')[-1][1:-1].split('x'))))
             # load the mask to get the mask dims
             mask_file = os.path.join(mask_file_dir, f'{brain_id}.v3draw')
+            if not os.path.exists(mask_file):
+                continue
             print(mask_file)
             mask_img = load_image(mask_file)
             z, y, x = mask_img.shape[-3:]
             mask_dims = np.array([y, x, z])
         
         args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids
-        brain_statis_wrapper(*args)
+        #brain_statis_wrapper(*args)
         args_list.append(args)
 
     print(f'Number of brains to process: {len(args_list)}')
