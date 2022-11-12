@@ -242,8 +242,7 @@ class CalcBrainStatis(object):
 
         return brain_counter
 
-def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, cuda=True):
-    brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
+def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids=-3, cuda=True):
     csv_out = os.path.join(out_dir, f'{brain_id}.csv')
     if os.path.exists(csv_out):
         return 
@@ -255,7 +254,7 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
     mip_dir = os.path.join(out_dir, f'mip2d_{brain_id}')
     if not os.path.exists(mip_dir):
         os.mkdir(mip_dir)
-    cbs = CalcBrainStatis(tera_dir, mip_dir=mip_dir, cuda=cuda)
+    cbs = CalcBrainStatis(tera_dir, mip_dir=mip_dir, cuda=cuda, res_id_statis=res_ids)
     cbs.set_region_mask(mask, max_res_dims, mask_dims)
     # statistics
     _, _, vmean, vstd = cbs.get_image_range()
@@ -279,26 +278,57 @@ if __name__ == '__main__':
     from multiprocessing.pool import Pool
 
     tera_downsize_file = './ccf_info/TeraDownsampleMap.csv'
-    tera_path = '/PBshare/TeraconvertedBrain'
     mask_file_dir = '/PBshare/SEU-ALLEN/Users/ZhixiYun/data/registration/Inverse'
-    out_dir = './statis_out_adaThr'
+    source = 'fMOST-Huang'
+    out_dir = f'./statis_out_adaThr/{source}'
     res_ids = -3
     filesize_thresh = 1.7
-    nproc = 6
-    
+    nproc = 5
+
+    if source == 'fMOST-Zeng':
+        match_str = 'mouse*[0-9]'
+        tera_path = '/PBshare/TeraconvertedBrain'
+    elif source == 'fMOST-Huang':
+        match_str = 'mouse*[0-9]/terafly'
+        tera_path = '/PBshare/Huang_Brains'
+    elif source == 'STPT-Huang':
+        match_str = '[1-9]*processed'
+        tera_path = '/PBshare/Huang_Brains'
+    elif source == 'LSFM-Wu':
+        tera_path = '/PBshare/Zhuhao_Wu'
+        match_str = 'WHOLE_mouse_B*'
+    elif source == 'LSFM_Osten':
+        pass
+    elif source == 'LSFM_Dong':
+        tera_path = '/PBshare/DongHW_Brains/20220315_SW220203_03_LS_6x_1000z'
+        match_str = '*TeraFly'
     
     if not os.path.exists(out_dir):
-        os.mkdir(out_dir)
+        os.makedirs(out_dir)
    
     dim_f = pd.read_csv(tera_downsize_file, index_col='ID', sep='\t')
     args_list = []
-    for tera_dir in glob.glob(os.path.join(tera_path, f'mouse[1-9]*[0-9]*')):
-        brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
-        max_res_dims = np.array([dim_f.loc[brain_id][0],dim_f.loc[brain_id][1],dim_f.loc[brain_id][2]])
-        mask_dims = np.array([dim_f.loc[brain_id][3],dim_f.loc[brain_id][4],dim_f.loc[brain_id][5]])
+    for tera_dir in glob.glob(os.path.join(tera_path, match_str)):
+        if source == 'fMOST-Zeng':
+            brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
+            max_res_dims = np.array([dim_f.loc[brain_id][0],dim_f.loc[brain_id][1],dim_f.loc[brain_id][2]])
+            mask_dims = np.array([dim_f.loc[brain_id][3],dim_f.loc[brain_id][4],dim_f.loc[brain_id][5]])
+        elif source == 'fMOST-Huang':
+            brain_folder = os.path.split(os.path.split(tera_dir)[0])[-1]
+            brain_id = int(brain_folder[-6:])
+            if brain_id == 190892:
+                continue    # The brain has no inverse mask at the present
+            res_path = get_tera_res_path(tera_dir, res_ids, False)
+            max_res_dims = np.array(list(map(int, res_path.split('RES')[-1][1:-1].split('x'))))
+            # load the mask to get the mask dims
+            mask_file = os.path.join(mask_file_dir, f'{brain_id}.v3draw')
+            print(mask_file)
+            mask_img = load_image(mask_file)
+            z, y, x = mask_img.shape[-3:]
+            mask_dims = np.array([y, x, z])
         
-        args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh
-        #brain_statis_wrapper(*args)
+        args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids
+        brain_statis_wrapper(*args)
         args_list.append(args)
 
     print(f'Number of brains to process: {len(args_list)}')
@@ -306,15 +336,6 @@ if __name__ == '__main__':
     pt.starmap(brain_statis_wrapper, args_list)
     pt.close()
     pt.join()
-    '''
 
-    img = np.random.random((256,256,256))
-    block_counts = get_block_counts(256,256,256)
-    img_c = torch.from_numpy(img).cuda()
-    block_counts = block_counts.cuda()
-    t0 = time.time()
-    conved = ada_thresholding(img, block_counts, h=5, d=3, cuda=True)
-    print(time.time() - t0)
-    print(conved.shape)
-    '''
+
 
