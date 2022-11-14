@@ -242,7 +242,7 @@ class CalcBrainStatis(object):
 
         return brain_counter
 
-def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids=-3, cuda=True):
+def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids=-3, source='fMOST-Zeng', cuda=True):
     csv_out = os.path.join(out_dir, f'{brain_id}.csv')
     if os.path.exists(csv_out):
         return 
@@ -258,7 +258,11 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
     cbs.set_region_mask(mask, max_res_dims, mask_dims)
     # statistics
     _, _, vmean, vstd = cbs.get_image_range()
-    vmax_thresh = min(max(vmean + 1.5 * vstd, 400), 1000)
+    if source == 'fMOST-Zeng':
+        vmax_thresh = min(max(vmean + 1.5 * vstd, 400), 1000)
+        print(vmean, vstd, vmax_thresh)
+    else:
+        vmax_thresh = 800
 
     brain_counter = cbs.brain_statis(filesize_thresh=filesize_thresh, vmax_thresh=vmax_thresh)
     #print(f'{brain_id}: {cbs.get_image_range()}')
@@ -277,19 +281,19 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
 if __name__ == '__main__':
     from multiprocessing.pool import Pool
 
-    tera_downsize_file = './ccf_info/TeraDownsampleMap.csv'
+    tera_downsize_file = './ccf_info/TeraDownsampleSize.csv'
     mask_file_dir = '/PBshare/SEU-ALLEN/Users/ZhixiYun/data/registration/Inverse'
     source = 'fMOST-Huang'
     out_dir = f'./statis_out_adaThr/{source}'
     res_ids = -3
     filesize_thresh = 1.7
-    nproc = 5
+    nproc = 1
 
     if source == 'fMOST-Zeng':
         match_str = 'mouse*[0-9]'
         tera_path = '/PBshare/TeraconvertedBrain'
     elif source == 'fMOST-Huang':
-        match_str = 'mouse*[0-9]/terafly'
+        match_str = 'mouse*[0-9]'
         tera_path = '/PBshare/Huang_Brains'
     elif source == 'STPT-Huang':
         match_str = '[1-9]*processed'
@@ -306,31 +310,29 @@ if __name__ == '__main__':
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
    
-    dim_f = pd.read_csv(tera_downsize_file, index_col='ID', sep='\t')
+    dim_f = pd.read_csv(tera_downsize_file, index_col='ID', sep=',')
     args_list = []
     for tera_dir in glob.glob(os.path.join(tera_path, match_str)):
         if source == 'fMOST-Zeng':
             brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
-            max_res_dims = np.array([dim_f.loc[brain_id][0],dim_f.loc[brain_id][1],dim_f.loc[brain_id][2]])
-            mask_dims = np.array([dim_f.loc[brain_id][3],dim_f.loc[brain_id][4],dim_f.loc[brain_id][5]])
         elif source == 'fMOST-Huang':
-            brain_folder = os.path.split(os.path.split(tera_dir)[0])[-1]
+            if os.path.exists(os.path.join(tera_dir, 'terafly')):
+                tera_dir = os.path.join(tera_dir, 'terafly')
+                brain_folder = os.path.split(os.path.split(tera_dir)[0])[-1]
+            else:
+                brain_folder = os.path.split(tera_dir)[-1]
             brain_id = int(brain_folder[-6:])
-            res_path = get_tera_res_path(tera_dir, res_ids, False)
-            max_res_dims = np.array(list(map(int, res_path.split('RES')[-1][1:-1].split('x'))))
-            # load the mask to get the mask dims
-            mask_file = os.path.join(mask_file_dir, f'{brain_id}.v3draw')
-            if not os.path.exists(mask_file):
-                continue
-            print(mask_file)
-            mask_img = load_image(mask_file)
-            z, y, x = mask_img.shape[-3:]
-            mask_dims = np.array([y, x, z])
-        
-        args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids
+        elif source == 'LSFM-Wu':
+            pass
+
+        max_res_dims = np.array([dim_f.loc[str(brain_id)][0],dim_f.loc[str(brain_id)][1],dim_f.loc[str(brain_id)][2]])
+        mask_dims = np.array([dim_f.loc[str(brain_id)][3],dim_f.loc[str(brain_id)][4],dim_f.loc[str(brain_id)][5]])
+            
+        args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids, source
         #brain_statis_wrapper(*args)
         args_list.append(args)
-
+    
+    #sys.exit()
     print(f'Number of brains to process: {len(args_list)}')
     pt = Pool(nproc)
     pt.starmap(brain_statis_wrapper, args_list)
