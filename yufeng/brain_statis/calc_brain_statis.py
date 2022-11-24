@@ -27,6 +27,18 @@ import torch.nn.functional as F
 from file_io import load_image, save_image, get_tera_res_path
 from image_utils import get_mip_image
 
+
+
+def get_zeng_threshs(thresh_file):
+    df = pd.read_csv(thresh_file)
+    brains = df['brain_id'].to_numpy()
+    threshs = df[['cur_thresh', 'supposed']].to_numpy()
+    thresh_dict = dict(zip(brains, threshs))
+    return thresh_dict
+
+fMOST_Zeng_THRESH = get_zeng_threshs(thresh_file='./statis_out_adaThr3/fMOST-Zeng/check_20221123.txt')
+
+
 def get_filesize(tera_dir, res_id=-3, outdir=None):
     np.random.seed(1024)
 
@@ -71,18 +83,23 @@ def get_block_counts(zdim, ydim, xdim, h=5, d=3):
     yc = np.maximum(dh - yv - 1, 0)//h + np.maximum(dh - (ydim - yv), 0)//h
     zc = np.maximum(dh - zv - 1, 0)//h + np.maximum(dh - (zdim - zv), 0)//h
     xc = np.maximum(dh - xv - 1, 0)//h + np.maximum(dh - (xdim - xv), 0)//h
-    bc = 2 * d * 3 + 1 - xc - yc - zc
+    bc = 2 * d * 3 - xc - yc - zc
     #print(bc.max(), bc.min(), bc.mean(), bc[:11,:11,:11], yc[:11,:11,:11], zc[:11,:11,:11], xc[:11,:11,:11])
     bc = torch.from_numpy(np.expand_dims(np.expand_dims(bc, 0), 0).astype(np.float32))
     return bc
 
-def ada_thresholding(img, block_counts, h=5, d=3, cuda=True):
+def ada_thresholding(img, block_counts, fg_thresh, h=5, d=3, cuda=True):
     if img.ndim == 4:
         imgt = torch.from_numpy(img.astype(np.float32)).unsqueeze(0)
     elif img.ndim == 3:
         imgt = torch.from_numpy(img.astype(np.float32)).unsqueeze(0).unsqueeze(0)
     k = 2 * d + 1
-    weight = torch.ones((1,1,k,k,k))
+    weight = torch.zeros((1,1,k,k,k))
+    weight[0,0,:,d,d] = 1
+    weight[0,0,d,:,d] = 1
+    weight[0,0,d,d,:] = 1
+    weight[0,0,d,d,d] = 0
+    
     if cuda:
         imgt = imgt.cuda()
         weight = weight.cuda()
@@ -95,13 +112,18 @@ def ada_thresholding(img, block_counts, h=5, d=3, cuda=True):
             block_counts = block_counts.cuda()
     conved = conved / block_counts
     diff = imgt - conved
-    #print(diff.max(), diff.min(), diff.abs().mean())
-    conved[diff < 0] = 0
+    #print(diff.max().item(), diff.min().item(), diff.abs().mean().item())
+    diff[diff < fg_thresh] = 0
+    diff[diff >= fg_thresh] = 1
+    # remove isolated digits
+    #diff_conv = F.conv3d(diff, weight, padding=d)
+    #diff[diff_conv < 3] = 0
 
+    diff = diff.bool()
     if cuda:
-        conved = conved.cpu()
-    conved = conved.numpy()[0][0]
-    return conved
+        diff = diff.cpu()
+    diff = diff.numpy()[0][0]
+    return diff
 
 class CalcBrainStatis(object):
     def __init__(self, tera_dir, res_id_statis=-3, mip_dir='', cuda=True, fmt='tif'):
@@ -154,9 +176,8 @@ class CalcBrainStatis(object):
         return vmax, vmin, vmean, vstd
 
 
-    def block_statis(self, block_path, img, thresh, start_x=0, start_y=0, start_z=0):
+    def block_statis(self, block_path, img_bin, start_x=0, start_y=0, start_z=0):
         """
-        @args: thresh is for segmenting the background from foreground
         """
         # infer the coordinate from the block_path
         fname = os.path.splitext(os.path.split(block_path)[-1])[0]
@@ -166,10 +187,7 @@ class CalcBrainStatis(object):
         # start_res = start_hres // self.multiplier
         # print(start_hres)
         #img = load_image(block_path)    # Reminder: TeraFly use uint16 by default
-        assert img.ndim == 3, "Only 3 dimensional image is supported!"
-        # signal binary 
-        img_bin = np.zeros(img.shape, dtype=np.uint8)
-        img_bin[img > thresh] = 1
+        assert img_bin.ndim == 3, "Only 3 dimensional image is supported!"
         # now you should get brain regions from the mask image
         fg_pos = np.nonzero(img_bin)
 
@@ -186,7 +204,7 @@ class CalcBrainStatis(object):
         region_counter = Counter(regions)
         return region_counter
 
-    def brain_statis(self, filesize_thresh=1.7, vmax_thresh=300, save_mip=True, start_x=0, start_y=0, start_z=0):
+    def brain_statis(self, filesize_thresh=1.7, vmax_thresh=300, fg_thresh=300, save_mip=True, start_x=0, start_y=0, start_z=0):
         if start_x > 0 and start_y > 0:
             # This is LSFM-Osten data, which miss the sec-highest resolution images
             # This if is very ugly!!!
@@ -229,8 +247,8 @@ class CalcBrainStatis(object):
 
             n_highQ_block += 1
             # do ada_thresholding
-            img_a = ada_thresholding(img, self.bc, cuda=self.cuda)
-            cur_counter = self.block_statis(block_file, img_a, vmax_thresh, start_x=start_x, start_y=start_y, start_z=start_z)
+            img_a = ada_thresholding(img, self.bc, fg_thresh=fg_thresh, cuda=self.cuda)
+            cur_counter = self.block_statis(block_file, img_a, start_x=start_x, start_y=start_y, start_z=start_z)
             brain_counter = brain_counter + cur_counter
 
             if save_mip and np.random.random() < 0.1:
@@ -238,8 +256,7 @@ class CalcBrainStatis(object):
                 img2d = get_mip_image(img)
                 max_pv = img2d.max()
                 min_pv = img2d.min()
-                img_thr = np.zeros(img2d.shape, dtype=np.uint8)
-                img_thr[img2d > vmax_thresh] = 255
+                img_thr = get_mip_image(img_a.astype(np.uint8) * 255)
 
                 # normalize for better visualization
                 img2d = ((img2d - min_pv) / (max_pv - min_pv + 1e-10) * 255).astype(np.uint8)
@@ -259,7 +276,7 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
     if os.path.exists(csv_out):
         return 
 
-    print(f'===> Processing {brain_id}')
+    print(f'===> Processing {brain_id} / {source}')
     mask_file = os.path.join(mask_file_dir, f'{brain_id}.v3draw')
     if source == 'LSFM-Osten':
         if brain_id == 'A2ds221_sitich_terafly_ver4.0':
@@ -272,7 +289,7 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
     else:
         start_x, start_y, start_z = 0, 0, 0
     
-
+    print(mask_file)
     mask = load_image(mask_file)
 
     mip_dir = os.path.join(out_dir, f'mip2d_{brain_id}')
@@ -287,21 +304,35 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
 
     cbs = CalcBrainStatis(tera_dir, mip_dir=mip_dir, cuda=cuda, res_id_statis=res_ids, fmt=fmt)
     cbs.set_region_mask(mask, max_res_dims, mask_dims)
-    _, _, vmean, vstd = cbs.get_image_range()
+    #_, _, vmean, vstd = cbs.get_image_range()
+    #print(vmean, vstd, vmax_thresh)
     if source == 'fMOST-Zeng':
-        vmax_thresh = min(max(vmean + 1.5 * vstd, 400), 1000)
+        #vmax_thresh = min(max(vmean + 1.5 * vstd, 400), 1000)
+        #fg_thresh = vmax_thresh * 0.9
+        ths = fMOST_Zeng_THRESH[brain_id]
+        if ths[0] == ths[1]:
+            print('The previous threshold is ok!')
+            return 
+        else:
+            print('Re-calculate with manually checked thresh!')
+            vmax_thresh = ths[1]
+            fg_thresh = vmax_thresh * 0.9
+
     elif source == 'fMOST-Huang':
         vmax_thresh = 800
+        fg_thresh = vmax_thresh * 0.9
     elif source == 'LSFM-Wu':
         vmax_thresh = 1000
+        fg_thresh = 600
     elif source == 'LSFM-Dong':
         vmax_thresh = 70
+        fg_thresh = 70
     elif source == 'LSFM-Osten':
         vmax_thresh = 800
+        fg_thresh = 250
 
-    print(vmean, vstd, vmax_thresh)
 
-    brain_counter = cbs.brain_statis(filesize_thresh=filesize_thresh, vmax_thresh=vmax_thresh, start_x=start_x, start_y=start_y, start_z=start_z)
+    brain_counter = cbs.brain_statis(filesize_thresh=filesize_thresh, vmax_thresh=vmax_thresh, fg_thresh=fg_thresh, start_x=start_x, start_y=start_y, start_z=start_z)
     #print(f'{brain_id}: {cbs.get_image_range()}')
     
     if len(brain_counter) > 0:
@@ -320,14 +351,14 @@ if __name__ == '__main__':
 
     tera_downsize_file = './ccf_info/TeraDownsampleSize.csv'
     mask_file_dir = '/PBshare/SEU-ALLEN/Users/ZhixiYun/data/registration/Inverse'
-    source = 'LSFM-Osten'
-    out_dir = f'./statis_out_adaThr/{source}'
+    source = 'fMOST-Zeng'
+    out_dir = f'./statis_out_adaThr4/{source}'
     res_ids = -3
     filesize_thresh = 1.7
-    nproc = 2
+    nproc = 4
 
     if source == 'fMOST-Zeng':
-        match_str = 'mouse*[0-9]'
+        match_str = 'mouse[0-9]*'
         tera_path = '/PBshare/TeraconvertedBrain'
     elif source == 'fMOST-Huang':
         match_str = 'mouse*[0-9]'
@@ -341,7 +372,7 @@ if __name__ == '__main__':
         res_ids = -1    # use -1 as it have relative low resolution
     elif source == 'LSFM-Osten':
         tera_path = '/PBshare/SEU-ALLEN/Projects/A2_A3_MouseBrain'
-        match_str = 'A[2-3]*' 
+        match_str = 'A[2-3]*terafly*' 
         res_ids = -3    # 
     elif source == 'LSFM-Dong':
         tera_path = '/PBshare/DongHW_Brains/20220315_SW220203_03_LS_6x_1000z'
@@ -391,7 +422,7 @@ if __name__ == '__main__':
         args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids, source
         #brain_statis_wrapper(*args)
         args_list.append(args)
-    
+ 
     #sys.exit()
     print(f'Number of brains to process: {len(args_list)}')
     pt = Pool(nproc)
