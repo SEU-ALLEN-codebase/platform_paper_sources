@@ -309,6 +309,9 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
     if source == 'fMOST-Zeng':
         #vmax_thresh = min(max(vmean + 1.5 * vstd, 400), 1000)
         #fg_thresh = vmax_thresh * 0.9
+        if brain_id not in fMOST_Zeng_THRESH:
+            return
+        
         ths = fMOST_Zeng_THRESH[brain_id]
         if ths[0] == ths[1]:
             print('The previous threshold is ok!')
