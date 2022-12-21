@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans, DBSCAN
 
 from file_io import load_image
-from anatomy.anatomy_core import parse_regions316
+from anatomy.anatomy_core import parse_regions316, parse_ana_tree
 
 from brain_analyzer_v2 import BrainsSignalAnalyzer
 
@@ -59,22 +59,34 @@ def axial_clustering(df_centers, axis='AP', vis=False, nclust=15):
 
     return clusters
     
-def write_graphviz(gfile, connections):
+def write_graphviz(connections, nr=70, axis='AP'):
+    gfile = 'temp_graphviz.txt'
+    ana_dict = parse_ana_tree(keyname='id')
     with open(gfile, 'w') as fp:
         fp.write('digraph G {\n')
         fp.write('    fontname="Helvetica,Arial,sans-serif"\n')
         fp.write('    node [fontname="Helvetica,Arial,sans-serif"]\n')
-        fp.write('    edge [fontname="Helvetica,Arial,sans-serif"]\n')
+        fp.write('    edge [fontname="Helvetica,Arial,sans-serif"]\n\n')
+
+        fp.write('    subgraph cluster_0 {\n')
+        fp.write('        node [style=filled];')
 	
         for cm in connections:
             ids1, ids2 = np.nonzero(cm.to_numpy())
             regions1 = cm.index[ids1]
             regions2 = cm.columns[ids2]
             for r1, r2 in zip(regions1, regions2):
-                fp.write(f'    {r1} -> {r2};\n')
-
+                rname1 = ana_dict[r1]['acronym']
+                rname2 = ana_dict[r2]['acronym']
+                fp.write(f'        "{rname1}" -> "{rname2}";\n')
+        fp.write(f'        label="{axis} graph";\n')
+        fp.write('        color=white\n')
+        fp.write('    }\n')
+    
         fp.write('}\n')
-            
+
+    os.system(f'cat {gfile} | dot -Tpng > pattern_AP_{nr}.png')
+    
 
 def get_connections(df_centers, clusters, corr, axis='AP', connection_thresh=0.5):
     # sort by cluster center
@@ -95,7 +107,7 @@ def get_connections(df_centers, clusters, corr, axis='AP', connection_thresh=0.5
     return connections
     
 
-def draw_AP_graph(center_file, distr_dir, ignore_lr=True, nclust=15, last_column='modality'):
+def draw_AP_graph(center_file, distr_dir, ignore_lr=True, nclust=15, last_column='modality', nr=70):
     print(f'Estimate center information')
     df_centers = pd.read_csv(center_file)
     if ignore_lr:
@@ -106,13 +118,14 @@ def draw_AP_graph(center_file, distr_dir, ignore_lr=True, nclust=15, last_column
     bssa = BrainsSignalAnalyzer(res_id=-3, plot=False)
     df_distr = bssa.parse_distrs(distr_dir)
     nreg = df_centers.shape[0]
-    if nreg == 315:
+    if nreg == 315:     # one region is missed
         nreg = 316
     df_distr = bssa.map_to_coarse_regions(df_distr, num_regions=nreg)
 
     print('Calculate brain-wide correlation coefficient')
     df_corr = df_distr.drop([last_column], axis=1)
-    corr = df_corr.corr(min_periods=10)
+    df_corr.replace(0, np.nan, inplace=True)
+    corr = df_corr.corr(min_periods=max(df_corr.shape[0]//5, 10))
     corr.fillna(0)
 
     # make sure the regions are in the same order
@@ -120,13 +133,15 @@ def draw_AP_graph(center_file, distr_dir, ignore_lr=True, nclust=15, last_column
     assert((~match).sum() == 0)
     # assign connection according to pairwise CC
     connections = get_connections(df_centers, clusters, corr, axis='AP', connection_thresh=0.7)
-    write_graphviz('temp_graphviz.txt', connections)
+    write_graphviz(connections, nr=nr, axis='AP')
 
 
 
 if __name__ == '__main__':
-    center_file = './region_centers/region_centers_ccf25_r316.csv'
+    nr = 70
+    nclust = 15
+    center_file = f'./region_centers/region_centers_ccf25_r{nr}.csv'
     distr_dir = '/home/lyf/Research/cloud_paper/brain_statistics/statis_out/statis_out_adaThr_all'
     
-    draw_AP_graph(center_file, distr_dir)
+    draw_AP_graph(center_file, distr_dir, nr=nr, nclust=nclust)
     
