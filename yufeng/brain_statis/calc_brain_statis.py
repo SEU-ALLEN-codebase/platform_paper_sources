@@ -36,7 +36,7 @@ def get_zeng_threshs(thresh_file):
     thresh_dict = dict(zip(brains, threshs))
     return thresh_dict
 
-fMOST_Zeng_THRESH = get_zeng_threshs(thresh_file='./statis_out_adaThr3/fMOST-Zeng/check_20221123.txt')
+fMOST_Zeng_THRESH = get_zeng_threshs(thresh_file='./statis_out_adaThr_unziped69_2/fMOST-Zeng/check_20221205.txt')
 
 
 def get_filesize(tera_dir, res_id=-3, outdir=None):
@@ -304,11 +304,12 @@ def brain_statis_wrapper(tera_dir, mask_file_dir, out_dir, max_res_dims, mask_di
 
     cbs = CalcBrainStatis(tera_dir, mip_dir=mip_dir, cuda=cuda, res_id_statis=res_ids, fmt=fmt)
     cbs.set_region_mask(mask, max_res_dims, mask_dims)
-    #_, _, vmean, vstd = cbs.get_image_range()
-    #print(vmean, vstd, vmax_thresh)
     if source == 'fMOST-Zeng':
+        #_, _, vmean, vstd = cbs.get_image_range()
         #vmax_thresh = min(max(vmean + 1.5 * vstd, 400), 1000)
         #fg_thresh = vmax_thresh * 0.9
+        
+        # use manual assigned threshold according to empirical values
         if brain_id not in fMOST_Zeng_THRESH:
             return
         
@@ -355,14 +356,15 @@ if __name__ == '__main__':
     tera_downsize_file = './ccf_info/TeraDownsampleSize.csv'
     mask_file_dir = '/PBshare/SEU-ALLEN/Users/ZhixiYun/data/registration/Inverse'
     source = 'fMOST-Zeng'
-    out_dir = f'./statis_out_adaThr4/{source}'
+    out_dir = f'./statis_out_adaThr_unziped69_3/{source}'
     res_ids = -3
     filesize_thresh = 1.7
     nproc = 4
 
     if source == 'fMOST-Zeng':
         match_str = 'mouse[0-9]*'
-        tera_path = '/PBshare/TeraconvertedBrain'
+        #tera_path = '/PBshare/TeraconvertedBrain'
+        tera_path = '/PBshare/BrainRaw/Unzipped_Brains'
     elif source == 'fMOST-Huang':
         match_str = 'mouse*[0-9]'
         tera_path = '/PBshare/Huang_Brains'
@@ -390,6 +392,8 @@ if __name__ == '__main__':
     for tera_dir in glob.glob(os.path.join(tera_path, match_str)):
         if source == 'fMOST-Zeng':
             brain_id = int(os.path.split(tera_dir)[-1].split('_')[0][5:])
+            if brain_id != 201602:
+                continue
         elif source == 'fMOST-Huang':
             if os.path.exists(os.path.join(tera_dir, 'terafly')):
                 tera_dir = os.path.join(tera_dir, 'terafly')
@@ -419,8 +423,11 @@ if __name__ == '__main__':
                 # start_y = 3561, start_x = 7886
                 # Z07-42Y10-19 of Z01-47Y01-26
         else:
-            max_res_dims = np.array([dim_f.loc[str(brain_id)][0],dim_f.loc[str(brain_id)][1],dim_f.loc[str(brain_id)][2]])
-            mask_dims = np.array([dim_f.loc[str(brain_id)][3],dim_f.loc[str(brain_id)][4],dim_f.loc[str(brain_id)][5]])
+            try:
+                max_res_dims = np.array([dim_f.loc[str(brain_id)][0],dim_f.loc[str(brain_id)][1],dim_f.loc[str(brain_id)][2]])
+                mask_dims = np.array([dim_f.loc[str(brain_id)][3],dim_f.loc[str(brain_id)][4],dim_f.loc[str(brain_id)][5]])
+            except KeyError:
+                continue
             
         args = tera_dir, mask_file_dir, out_dir, max_res_dims, mask_dims, filesize_thresh, brain_id, res_ids, source
         #brain_statis_wrapper(*args)
