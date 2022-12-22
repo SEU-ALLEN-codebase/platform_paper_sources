@@ -227,7 +227,7 @@ class BrainsSignalAnalyzer(object):
 
         
 
-    def convert_modality_to_label(self, df, label_file, normalize=True):
+    def convert_modality_to_label(self, df, label_file='./fMOST-Zeng_labels_edited.csv', normalize=True):
         # normalize
         df_d = df.loc[:, df.columns!='modality']
         if normalize:
