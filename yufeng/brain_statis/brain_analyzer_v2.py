@@ -243,11 +243,11 @@ class BrainsSignalAnalyzer(object):
         return df
       
 
-    def map_to_coarse_regions(self, df, num_regions=70, last_column='modality'):
+    def map_to_coarse_regions(self, df, level=1, last_column='modality'):
         """
-        :params hier: hier==0 means use the original 316 regions, otherwise use parental 70 regions
+        :params level: level==0 means use the original 316 regions, otherwise use parental 70 regions
         """
-        rids_set = load_regions(num_regions=num_regions)
+        rids_set = load_regions(level=level)
         # The set should be consensus with original 671
 
         # regions mapping
@@ -272,7 +272,7 @@ class BrainsSignalAnalyzer(object):
 
     def corr_clustermap(self, distr_dir):
         df = self.parse_distrs(distr_dir)
-        df = self.map_to_coarse_regions(df, num_regions=70)
+        df = self.map_to_coarse_regions(df, level=1)
 
         plot_corr = True
         if self.plot and plot_corr:
