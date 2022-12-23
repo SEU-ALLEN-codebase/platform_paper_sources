@@ -22,7 +22,7 @@ import hdbscan
 import umap
 
 from file_io import load_image
-from anatomy.anatomy_config import REGION671
+from anatomy.anatomy_config import REGION671, MASK_CCF25_FILE
 from anatomy.anatomy_core import parse_id_map, parse_ana_tree, parse_regions316
 
 from common_func import load_regions, get_region_mapper
@@ -122,7 +122,11 @@ class BrainsSignalAnalyzer(object):
         self.ana_dict = parse_ana_tree(keyname='id')
 
 
-    def parse_distrs(self, distr_dir, ignore_lr=True):
+    def parse_distrs(self, distr_dir, ignore_lr=True, precomputed_file=None):
+        if precomputed_file:
+            df = pd.read_csv(precomputed_file, index_col=0)
+            return df
+
         dfiles = sorted(glob.glob(os.path.join(distr_dir, '*', '*csv')), key=lambda x: os.path.splitext(os.path.split(x)[-1])[0])
         brains = [os.path.splitext(os.path.split(distr_file)[-1])[0] for distr_file in dfiles]
         
@@ -164,10 +168,59 @@ class BrainsSignalAnalyzer(object):
                 df.at[brain_id, sid] += count
         
         # remove the empty regions
-        #print(f'Original shape: {df.shape}')
-        #df.drop([col for col, val in df.sum().iteritems() if val == 0], axis=1, inplace=True)
         print(f'Non-empty df shape: {df.shape}')
-        print(df.sum())
+
+        save_result = False
+        if save_result:
+            df.to_csv("precomputed_distrs.csv", sep=',')
+        
+        return df
+
+    def load_somata(self, somata_dir='/media/lyf/Carry/paper/fig1bstype/marker_regi_25', precomputed_file=None):
+        if precomputed_file:
+            df = pd.read_csv(precomputed_file, index_col=0)
+            return df
+
+        sfiles = sorted(glob.glob(os.path.join(somata_dir, '*/*.swc')))
+        brains = [os.path.split(os.path.split(sfile)[0])[-1] for sfile in sfiles]
+        ids = REGION671[:]
+        ids_set = set(ids)
+        # initialize dataframe
+        df = pd.DataFrame(np.zeros((len(sfiles), len(ids_set)+1)), columns=ids+['modality'], index=brains)
+
+        print('Loading the CCFv3-25um mask file for region assignment')
+        mask = load_image(MASK_CCF25_FILE)
+        zm, ym, xm = mask.shape # z,y,x order
+
+        print('Loading somata data')
+        for sfile in sfiles:
+            brain = os.path.split(os.path.split(sfile)[0])[-1]
+            print(f'--> Processing for {brain}')
+            df.loc[brain, 'modality'] = 'fMOST-Zeng'
+
+            coords = np.genfromtxt(sfile)
+            if coords.size == 0:
+                print(f'<-- No somata is found!')
+                continue
+            elif coords.ndim == 1:
+                print(f'Warning: only 1 somata is found!')
+                coords = coords.reshape(1,-1)
+            
+            coords = np.floor(coords[:,2:5]).astype(np.int32)  
+            # discard possible out-of-box coordinates, in case of error
+            inrange_mask = (coords >= 0) & (coords < np.array([xm,ym,zm]))
+            inrange_mask = np.sum(inrange_mask, axis=1) == 3
+            # get the region according to the coordinates
+            coords = coords[inrange_mask]
+            # accessing the region index
+            regions = mask[coords[:,2], coords[:,1], coords[:,0]]
+            regions = regions[regions > 0]
+            rs, cs = np.unique(regions, return_counts=True)
+            for r,c in zip(rs, cs):
+                df.at[brain, r] = c
+
+        df.to_csv('precomputed_somata.csv', sep=',')
+            
         return df
 
     def plot_region_distrs_modalities(self, distr_dir):
@@ -239,7 +292,8 @@ class BrainsSignalAnalyzer(object):
         labels = pd.read_csv(label_file, index_col=0)
         labels.index = labels.index.map(str)
         for irow, row in labels.iterrows():
-            df.at[irow, 'label'] = row['label']
+            if irow in df.index:
+                df.at[irow, 'label'] = row['label']
         return df
       
 
@@ -334,7 +388,8 @@ if __name__ == '__main__':
         bssa.calc_left_right_corr(distr_dir)
 
     if 1:
-        bssa.corr_clustermap(distr_dir)
+        #bssa.corr_clustermap(distr_dir)
+        bssa.load_somata()
     
         
 

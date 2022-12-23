@@ -102,30 +102,25 @@ def graph_with_label_bak(ndict, df_centers, df_distr, col_name, ana_dict):
 
     return TR
 
-def graph_with_label(ndict, df_centers, df_distr, col_name, ana_dict):
 
-    def get_color(id_path, cmap):
-        color = 'black'
-        for idx in id_path:
-            if idx in cmap:
-                return cmap[idx]
-        return color
+def get_color(id_path, cmap):
+    color = 'black'
+    for idx in id_path:
+        if idx in cmap:
+            return cmap[idx]
+    return color
 
-    cmap = {
-        688: 'orange', # CTX
-        623: 'green', # CNU: STR + PAL
-        512: 'magenta',  # CB, 
-        343: 'cyan',  # BS: IB(549(TH)+HY), MB, HB
-    }
+
+def initialize_graph(df_centers, ndict, ana_dict, col_name):
     ctx = 688  # cortex, CTX
 
     G = nx.DiGraph()
     for k, v in ndict.items():
-        id_path1 = ana_dict[k]['structure_id_path']
+        #id_path1 = ana_dict[k]['structure_id_path']
         #if ctx not in id_path1:
         #    continue
         for vi in v:
-            id_path2 = ana_dict[vi]['structure_id_path']
+            #id_path2 = ana_dict[vi]['structure_id_path']
             #if ctx not in id_path2:
             #    continue
 
@@ -143,6 +138,17 @@ def graph_with_label(ndict, df_centers, df_distr, col_name, ana_dict):
     TR.add_nodes_from(G.nodes(data=True))
     TR.add_edges_from((u, v, G.edges[u, v]) for u, v in TR.edges)
 
+    return TR
+
+def graph_with_label(ndict, df_centers, df_distr, col_name, ana_dict):
+    cmap = {
+        688: 'orange', # CTX
+        623: 'green', # CNU: STR + PAL
+        512: 'magenta',  # CB, 
+        343: 'cyan',  # BS: IB(549(TH)+HY), MB, HB
+    }
+
+    TR = initialize_graph(df_centers, ndict, ana_dict, col_name)
     labels = [l for l in np.unique(df_distr['label']) if l not in ('', 'Ai139')]
 
     for cur_label in labels:
@@ -157,6 +163,46 @@ def graph_with_label(ndict, df_centers, df_distr, col_name, ana_dict):
                 pw = max(min(125 * v + 0.5, 10), 0.5)
             else:
                 pw = max(min(500 * v + 0.5, 10), 0.5)
+            id_path = ana_dict[rid]['structure_id_path']
+            color = get_color(id_path, cmap)
+            if rname in nodes:
+                nodes[rname]['penwidth'] = pw
+                nodes[rname]['fillcolor'] = color
+                nodes[rname]['style'] = 'filled'
+        
+        A = nx.nx_agraph.to_agraph(TR)  # convert to a graphviz graph
+        lstr = cur_label.replace(';', '-').replace('+', '--')
+        A.draw(f"graph_label{lstr}.png", prog='dot')  # Draw with pygraphviz   
+
+    return TR
+
+def graph_for_somata(ndict, df_centers, df_distr, col_name, ana_dict):
+    cmap = {
+        688: 'orange', # CTX
+        623: 'green', # CNU: STR + PAL
+        512: 'magenta',  # CB, 
+        343: 'cyan',  # BS: IB(549(TH)+HY), MB, HB
+    }
+
+    TR = initialize_graph(df_centers, ndict, ana_dict, col_name)
+    labels = [l for l in np.unique(df_distr['label']) if l not in ('', 'Ai139')]
+
+    for cur_label in labels:
+        print(f'==> Processing for {cur_label}')
+        df_labels = df_distr[df_distr['label'] == cur_label].drop(['label'], axis=1).median(axis=0)
+        df_ln = df_labels / df_labels.sum()
+        nodes = TR.nodes
+        TR.graph['label'] = f'\n{cur_label}'
+        for rid in df_labels.index:
+            v = df_labels.at[rid]
+            vn = df_ln.at[rid]
+            rname = ana_dict[rid]['acronym']
+            if v < 10:
+                pw = 0.5
+            elif df_centers.shape[0] < 300:
+                pw = max(min(125 * vn + 0.5, 10), 0.5)
+            else:
+                pw = max(min(500 * vn + 0.5, 10), 0.5)
             id_path = ana_dict[rid]['structure_id_path']
             color = get_color(id_path, cmap)
             if rname in nodes:
@@ -216,7 +262,6 @@ def draw_AP_graph_with_label(center_file, distr_dir, neighbor_file, ignore_lr=Tr
         ndict = pickle.load(fp)
 
     col_name = get_col_by_axis(axis='AP')
-    ana_dict = parse_ana_tree()
 
     print('Estimate distribution information')
     bssa = BrainsSignalAnalyzer(res_id=-3, plot=False)
@@ -227,6 +272,7 @@ def draw_AP_graph_with_label(center_file, distr_dir, neighbor_file, ignore_lr=Tr
     else:
         level = 0
     df_distr = bssa.map_to_coarse_regions(df_distr, level=level)
+    ana_dict = bssa.ana_dict
 
     print('Calculate brain-wide correlation coefficient')
     df_distr = bssa.convert_modality_to_label(df_distr, normalize=True)
@@ -234,11 +280,52 @@ def draw_AP_graph_with_label(center_file, distr_dir, neighbor_file, ignore_lr=Tr
     # assign connection according to pairwise CC
     graph_with_label(ndict, df_centers, df_distr, col_name, ana_dict)
 
+def draw_AP_graph_for_somata(center_file, precomputed_file, neighbor_file, ignore_lr=True, nr=70, minimal_somata=100):
+    print(f'Estimate center information')
+    df_centers = pd.read_csv(center_file, index_col='regionID_CCF')
+    if ignore_lr:
+        df_centers = df_centers[df_centers['right'] == 1]
+
+    print(f'Loading the graph')
+    with open(neighbor_file, 'rb') as fp:
+        ndict = pickle.load(fp)
+
+    col_name = get_col_by_axis(axis='AP')
+
+    print('Estimate distribution information')
+    bssa = BrainsSignalAnalyzer(res_id=-3, plot=False)
+    df_distr = bssa.load_somata(precomputed_file=precomputed_file)
+    # drop brains with number of somata less than minimal_somata
+    df_distr = df_distr[df_distr.sum(axis=1) > minimal_somata]
+    # convert the dtype of column names to int
+    rnames = [rname for rname in df_distr.columns if rname != 'modality']
+    cname_mapper = dict(zip(df_distr, map(int, rnames)))
+    df_distr.rename(columns=cname_mapper, inplace=True)
+    df_distr.rename(index=str, inplace=True)
+
+    nreg = df_centers.shape[0]
+    if nreg < 300:
+        level = 1
+    else:
+        level = 0
+    
+    df_distr = bssa.map_to_coarse_regions(df_distr, level=level)
+
+    ana_dict = bssa.ana_dict
+
+    print('Calculate brain-wide correlation coefficient')
+    df_distr = bssa.convert_modality_to_label(df_distr, normalize=False)
+    
+    # assign connection according to pairwise CC
+    graph_for_somata(ndict, df_centers, df_distr, col_name, ana_dict)
+
 if __name__ == '__main__':
-    nr = 70
+    nr = 316
     center_file = f'./region_centers/region_centers_ccf25_r{nr}.csv'
     neighbor_file = f'./region_centers/regional_neibhgors_n{nr}.pkl'
     distr_dir = '/home/lyf/Research/cloud_paper/brain_statistics/statis_out/statis_out_adaThr_all'
+    precomputed_somata = 'precomputed_somata.csv'
     
-    draw_AP_graph_with_label(center_file, distr_dir, neighbor_file, nr=nr)
+    #draw_AP_graph_with_label(center_file, distr_dir, neighbor_file, nr=nr)
+    draw_AP_graph_for_somata(center_file, precomputed_somata, neighbor_file, nr=nr, minimal_somata=100)
     
