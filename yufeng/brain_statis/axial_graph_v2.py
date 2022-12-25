@@ -104,11 +104,9 @@ def graph_with_label_bak(ndict, df_centers, df_distr, col_name, ana_dict):
 
 
 def get_color(id_path, cmap):
-    color = 'black'
     for idx in id_path:
         if idx in cmap:
-            return cmap[idx]
-    return color
+            return cmap[idx], idx
 
 
 def initialize_graph(df_centers, ndict, ana_dict, col_name):
@@ -156,19 +154,28 @@ def graph_with_label(ndict, df_centers, df_distr, col_name, ana_dict):
         df_labels = df_distr[df_distr['label'] == cur_label].drop(['label'], axis=1).median(axis=0)
         nodes = TR.nodes
         TR.graph['label'] = f'\n{cur_label}'
+        stats = []
         for rid in df_labels.index:
             v = df_labels.at[rid]
             rname = ana_dict[rid]['acronym']
             if df_centers.shape[0] < 300:
                 pw = max(min(125 * v + 0.5, 10), 0.5)
             else:
-                pw = max(min(500 * v + 0.5, 10), 0.5)
+                pw = max(min(250 * v + 0.5, 10), 0.5)
+
             id_path = ana_dict[rid]['structure_id_path']
-            color = get_color(id_path, cmap)
+            color, sid = get_color(id_path, cmap)
+            if pw > 3:
+                stats.append((ana_dict[sid]['acronym'], rname, v))
             if rname in nodes:
                 nodes[rname]['penwidth'] = pw
                 nodes[rname]['fillcolor'] = color
                 nodes[rname]['style'] = 'filled'
+
+        stats = sorted(stats, key=lambda x:x[-1], reverse=True)
+        print(f'#regions: {len(stats)}')
+        for st in stats:
+            print(f'{st[0]} {st[1]} {st[2]:.4f}')
         
         A = nx.nx_agraph.to_agraph(TR)  # convert to a graphviz graph
         lstr = cur_label.replace(';', '-').replace('+', '--')
@@ -193,6 +200,7 @@ def graph_for_somata(ndict, df_centers, df_distr, col_name, ana_dict):
         df_ln = df_labels / df_labels.sum()
         nodes = TR.nodes
         TR.graph['label'] = f'\n{cur_label}'
+        stats = []
         for rid in df_labels.index:
             v = df_labels.at[rid]
             vn = df_ln.at[rid]
@@ -202,13 +210,21 @@ def graph_for_somata(ndict, df_centers, df_distr, col_name, ana_dict):
             elif df_centers.shape[0] < 300:
                 pw = max(min(125 * vn + 0.5, 10), 0.5)
             else:
-                pw = max(min(500 * vn + 0.5, 10), 0.5)
+                pw = max(min(250 * vn + 0.5, 10), 0.5)
+            
             id_path = ana_dict[rid]['structure_id_path']
-            color = get_color(id_path, cmap)
+            color, sid = get_color(id_path, cmap)
+            if pw > 3:
+                stats.append((ana_dict[sid]['acronym'], rname, v, vn))
             if rname in nodes:
                 nodes[rname]['penwidth'] = pw
                 nodes[rname]['fillcolor'] = color
                 nodes[rname]['style'] = 'filled'
+
+        stats = sorted(stats, key=lambda x:x[-1], reverse=True)
+        print(f'#regions: {len(stats)}')
+        for st in stats:
+            print(f'{st[0]} {st[1]} {int(st[2]):d} {st[3]:.4f}')
         
         A = nx.nx_agraph.to_agraph(TR)  # convert to a graphviz graph
         lstr = cur_label.replace(';', '-').replace('+', '--')
@@ -320,7 +336,7 @@ def draw_AP_graph_for_somata(center_file, precomputed_file, neighbor_file, ignor
     graph_for_somata(ndict, df_centers, df_distr, col_name, ana_dict)
 
 if __name__ == '__main__':
-    nr = 316
+    nr = 70
     center_file = f'./region_centers/region_centers_ccf25_r{nr}.csv'
     neighbor_file = f'./region_centers/regional_neibhgors_n{nr}.pkl'
     distr_dir = '/home/lyf/Research/cloud_paper/brain_statistics/statis_out/statis_out_adaThr_all'

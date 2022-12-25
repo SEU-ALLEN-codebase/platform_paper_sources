@@ -40,6 +40,14 @@ def load_region_distr(distr_file, remove_zero=True):
 
     return distr
 
+def format_precomputed_df(df, last_column='modality'):
+    rnames = [rname for rname in df.columns if rname != last_column]
+    cname_mapper = dict(zip(df, map(int, rnames)))
+    df.rename(columns=cname_mapper, inplace=True)
+    df.rename(index=str, inplace=True)
+    return df
+
+
 class BrainSignalAnalyzer(object):
     def __init__(self, res_id, region_file):
         assert (res_id < 0)
@@ -278,7 +286,43 @@ class BrainsSignalAnalyzer(object):
             plt.savefig(f'distr_label_{max_l.replace(";", "_")}.png', dpi=200)
             plt.close()
 
-        
+    def plot_region_distrs_labeling2(self, precomputed_file, region_level=1):
+        df = pd.read_csv(precomputed_file, index_col=0)
+        format_precomputed_df(df, last_column='modality')
+        df = self.map_to_coarse_regions(df, level=region_level, last_column='modality')
+        df = self.convert_modality_to_label(df, normalize=True)
+        df = df[df.label != '']
+        df.sort_values(by=['label'], inplace=True)
+        sx = df.shape[0]
+        sy = df.shape[1] - 1
+        ndf = pd.DataFrame(np.zeros((sx*sy, 4)), columns=('region', 'brain', 'scale', 'label'))
+        rnames = [self.ana_dict[idx]['acronym'] for idx in df.columns.drop('label')]
+        ndf['region'] = np.array(rnames).repeat(sx).reshape(sy, sx).transpose().reshape(-1)
+        ndf['brain'] = df.index.repeat(sy)
+        ndf['scale'] = df.drop('label', axis=1).to_numpy().reshape(-1)
+        ndf['label'] = df['label'].to_numpy().repeat(sy)
+
+        cs = 'brgcmyk'
+        nlabel = len(np.unique(df.label))
+        k = int(np.ceil(nlabel / len(cs)))
+        palette = [c for c in (cs * k)[:nlabel]]
+        g = sns.relplot(
+            data=ndf,
+            x='region',
+            y='brain',
+            size='scale',
+            hue='label',
+            height=20,
+            sizes=(5,200),
+            palette=palette
+        )
+        plt.xticks(rnames, rotation=90, fontsize=15)
+        plt.yticks([])
+        plt.xlabel('Region', fontsize=15)
+        plt.ylabel('Brain', fontsize=30)
+        plt.savefig('temp.png', dpi=300)
+        plt.close()
+   
 
     def convert_modality_to_label(self, df, label_file='./fMOST-Zeng_labels_edited.csv', normalize=True):
         # normalize
@@ -380,14 +424,15 @@ if __name__ == '__main__':
 
     bssa = BrainsSignalAnalyzer(res_id=res_id, plot=True)
 
-    if 0:
+    if 1:
+        precomputed_file = 'precomputed_distrs_brains116.csv'
         #bssa.plot_region_distrs_modalities(distr_dir)
-        bssa.plot_region_distrs_labeling(distr_dir, label_file)
+        bssa.plot_region_distrs_labeling2(precomputed_file, region_level=1)
 
     if 0:
         bssa.calc_left_right_corr(distr_dir)
 
-    if 1:
+    if 0:
         #bssa.corr_clustermap(distr_dir)
         bssa.load_somata()
     
