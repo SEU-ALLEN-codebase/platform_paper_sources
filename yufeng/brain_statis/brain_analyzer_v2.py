@@ -286,13 +286,12 @@ class BrainsSignalAnalyzer(object):
             plt.savefig(f'distr_label_{max_l.replace(";", "_")}.png', dpi=200)
             plt.close()
 
-    def plot_region_distrs_labeling2(self, precomputed_file, region_level=1):
-        df = pd.read_csv(precomputed_file, index_col=0)
-        format_precomputed_df(df, last_column='modality')
-        df = self.map_to_coarse_regions(df, level=region_level, last_column='modality')
-        df = self.convert_modality_to_label(df, normalize=True)
-        df = df[df.label != '']
-        df.sort_values(by=['label'], inplace=True)
+    def plot_region_distrs_labeling2(self, precomputed_file, out_img_file='temp.png', height=10, aspect=1.0, sizes=(1,50)):
+        if type(precomputed_file) is str:
+            df = pd.read_csv(precomputed_file, index_col=0)
+        else:
+            df = precomputed_file
+        
         sx = df.shape[0]
         sy = df.shape[1] - 1
         ndf = pd.DataFrame(np.zeros((sx*sy, 4)), columns=('region', 'brain', 'scale', 'label'))
@@ -312,17 +311,164 @@ class BrainsSignalAnalyzer(object):
             y='brain',
             size='scale',
             hue='label',
-            height=20,
-            sizes=(5,200),
+            height=height,
+            aspect=aspect,
+            sizes=sizes,
+            size_norm=(0,1),
             palette=palette
         )
-        plt.xticks(rnames, rotation=90, fontsize=15)
-        plt.yticks([])
-        plt.xlabel('Region', fontsize=15)
-        plt.ylabel('Brain', fontsize=30)
-        plt.savefig('temp.png', dpi=300)
+        plt.xticks(rnames, fontsize=13)
+        plt.yticks(labels=None, fontsize=0)
+        plt.xlabel('')
+        plt.ylabel('Brain', fontsize=20)
+        plt.grid(alpha=0.5)
+        plt.savefig(out_img_file, dpi=300)
         plt.close()
    
+    def plot_region_distrs_labeling2_comp(self, precomputed_somata, precomputed_signal, region_level=1):
+        """
+            Plot the region-vs-brain relplot distribution of somata and signal at the same time, so
+        that it is convenient to use the same set of high-density regions for comparison
+        """
+
+        def preprocess(df, region_level):
+            format_precomputed_df(df, last_column='modality')
+            df = self.map_to_coarse_regions(df, level=region_level, last_column='modality')
+            df = self.convert_modality_to_label(df, normalize=True)
+            df = df[df.label != '']
+            df.rename_axis('brain').sort_values(by=['label', 'brain'], ascending=[True, True], inplace=True)
+            return df
+
+
+        df_somata = pd.read_csv(precomputed_somata, index_col=0)
+        df_signal = pd.read_csv(precomputed_signal, index_col=0)
+
+        # find the common abundent regions between somata and signal
+        dfn1 = preprocess(df_somata, region_level=region_level)
+        dfn2 = preprocess(df_signal, region_level=region_level)
+        
+        somata_d = dfn1.drop('label', axis=1).sum()
+        signal_d = dfn2.drop('label', axis=1).sum()
+        mthresh = 4 * somata_d.sum() / somata_d.shape[0]
+        idx1 = somata_d[somata_d > mthresh].index
+        idx2 = signal_d[signal_d > mthresh].index
+        idxs = (idx1 | idx2).astype(np.int32)
+        # select subset of data according to idxs: high-set for main penal of fig3, low-set for suppl figure
+        hsom = dfn1[idxs]
+        hsom = hsom.assign(label=dfn1['label'])
+        lsom = dfn1.drop(idxs, axis=1);
+        hsig = dfn2[idxs]
+        hsig = hsig.assign(label=dfn2['label'])
+        lsig = dfn2.drop(idxs, axis=1);
+
+        # select by brain
+        bthresh = 0.8
+        hi1 = hsom.sum(axis=1) > bthresh
+        hi2 = hsig.sum(axis=1) > bthresh
+        hi = hi1 | hi2
+        hsom = hsom[hi]
+        hsig = hsig[hi]
+        
+        
+        
+        # plot the the figures using function `plot_region_distrs_labeling2`
+        # 4 plots: high-set of somata, high-set of signal, low-set of somata, low-set of signal
+        self.plot_region_distrs_labeling2(hsom, out_img_file='region_distr_hsom.png', height=5, aspect=1., sizes=(0, 500))
+        #self.plot_region_distrs_labeling2(dfn1, out_img_file='region_distr_som.png')
+        self.plot_region_distrs_labeling2(hsig, out_img_file='region_distr_hsig.png', height=5, aspect=1., sizes=(0, 500))
+        #self.plot_region_distrs_labeling2(dfn2, out_img_file='region_distr_sig.png')
+
+    def plot_distribution_all(self, precomputed_somata, precomputed_signal, region_level=1):
+        def preprocess(df, region_level):
+            format_precomputed_df(df, last_column='modality')
+            df = self.map_to_coarse_regions(df, level=region_level, last_column='modality')
+            df = self.convert_modality_to_label(df, normalize=False)
+            #df = df[df.label != '']
+            df.rename_axis('brain').sort_values(by=['label', 'brain'], ascending=[True, True], inplace=True)
+            return df
+
+
+        df_somata = pd.read_csv(precomputed_somata, index_col=0)
+        df_signal = pd.read_csv(precomputed_signal, index_col=0)
+
+        # find the common abundent regions between somata and signal
+        dfn1 = preprocess(df_somata, region_level=region_level)
+        dfn2 = preprocess(df_signal, region_level=region_level)
+
+        
+        som_reg = dfn1.sum().drop('label')
+        #som_reg /= som_reg.sum()
+        som_bra = dfn1.drop('label', axis=1).sum(axis=1)
+        nsom = som_bra.shape[0]
+        #som_bra /= (som_bra.sum() * sig_bra.shape[0] / nsom)
+
+        sig_reg = dfn2.sum().drop('label')
+        sig_reg /= (sig_reg.mean() / som_reg.mean())
+        sig_bra = dfn2.drop('label', axis=1).sum(axis=1)
+        #sig_bra /= sig_bra.sum()
+        sig_bra /= (sig_bra.mean() / som_bra.mean())
+
+        # fill the missing values
+        for idx in sig_bra.index:
+            if idx not in som_bra.index:
+                som_bra.loc[idx] = np.NaN
+
+
+        
+        # merge the data
+        rdistr = np.vstack((som_reg.to_numpy(), sig_reg.to_numpy()))
+        ind1 = rdistr[0].argsort()
+        rdistr = rdistr[:,ind1].reshape(-1)
+        reg = pd.DataFrame(
+            {
+                'regional distr': rdistr, 
+                'region_id':np.hstack((som_reg.index[ind1], sig_reg.index[ind1])), 
+                'region':np.hstack((range(som_reg.shape[0]), range(sig_reg.shape[0]))),
+                'type': ['somata' for i in range(som_reg.shape[0])] + ['signal' for i in range(sig_reg.shape[0])]
+            })
+
+        bdistr = pd.DataFrame({
+                'som': np.zeros(sig_bra.shape[0]),
+                'sig': sig_bra.to_numpy()}, index=sig_bra.index)
+        for idx in bdistr.index:
+            bdistr.loc[idx, 'som'] = som_bra.loc[idx]
+        bdistr = bdistr.to_numpy().transpose()
+
+        ind2 = bdistr[0].argsort()
+        bdistr = bdistr[:,ind2].reshape(-1)
+        bra = pd.DataFrame(
+            {
+                'brain-wide distr': bdistr, 
+                'region_id':np.hstack((som_bra.index[ind2], sig_bra.index[ind2])), 
+                'brain':np.hstack((range(som_bra.shape[0]), range(sig_bra.shape[0]))),
+                'type': ['somata' for i in range(som_bra.shape[0])] + ['signal' for i in range(sig_bra.shape[0])]
+            })
+        
+
+        # plotting
+        sns.set_style("darkgrid")
+        sns.scatterplot(
+            data=reg, x="region", y="regional distr", hue="type"
+        )
+        plt.yscale('log')
+        plt.xlabel('Brain region', fontsize=16)
+        plt.ylabel('Number of somata', fontsize=16)
+        plt.legend(fontsize=14, loc='lower right')
+        plt.savefig('regional_distr.png', dpi=300)
+        plt.close('all')
+
+        sns.scatterplot(
+            data=bra, x="brain", y="brain-wide distr", hue="type"
+        )
+        plt.yscale('log')
+        xlim = plt.xlim()
+        plt.axvspan(nsom, xlim[1], color='#388E3C', alpha=0.1)
+        plt.xlim(xlim)
+        plt.xlabel('Brain', fontsize=16)
+        plt.ylabel('Number of somata', fontsize=16)
+        plt.legend(fontsize=14, loc='lower right')
+        plt.savefig('brainwide_distr.png', dpi=300)
+        plt.close('all')
 
     def convert_modality_to_label(self, df, label_file='./fMOST-Zeng_labels_edited.csv', normalize=True):
         # normalize
@@ -425,10 +571,12 @@ if __name__ == '__main__':
     bssa = BrainsSignalAnalyzer(res_id=res_id, plot=True)
 
     if 1:
-        precomputed_file = 'precomputed_distrs_brains116.csv'
+        precomputed_signal = 'precomputed_distrs.csv'
+        precomputed_somata = 'precomputed_somata.csv'
         #bssa.plot_region_distrs_modalities(distr_dir)
-        bssa.plot_region_distrs_labeling2(precomputed_file, region_level=1)
-
+        #bssa.plot_region_distrs_labeling2_comp(precomputed_somata, precomputed_signal, region_level=1)
+        bssa.plot_distribution_all(precomputed_somata, precomputed_signal, region_level=1)
+        
     if 0:
         bssa.calc_left_right_corr(distr_dir)
 

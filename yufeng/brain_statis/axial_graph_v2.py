@@ -297,6 +297,14 @@ def draw_AP_graph_with_label(center_file, distr_dir, neighbor_file, ignore_lr=Tr
     graph_with_label(ndict, df_centers, df_distr, col_name, ana_dict)
 
 def draw_AP_graph_for_somata(center_file, precomputed_file, neighbor_file, ignore_lr=True, nr=70, minimal_somata=100):
+    """
+    :params center_file: pre-calculated center for 70(76)/316(315) regions
+    :params precomputed_file: precomputed somata distribution
+    :params neighbor_file: direct neighboring regions
+    :params ignore_lr: whether to discriminate left and right
+    :params nr: deprecated
+    :params minimal_somata: brains with somata less than minimal_somata will be discarded
+    """
     print(f'Estimate center information')
     df_centers = pd.read_csv(center_file, index_col='regionID_CCF')
     if ignore_lr:
