@@ -463,7 +463,7 @@ class BrainsSignalAnalyzer(object):
         )
         plt.yscale('log')
         xlim = plt.xlim()
-        #plt.axvspan(nsom, xlim[1], color='#388E3C', alpha=0.1)
+        plt.axvspan(nsom, xlim[1], color='#388E3C', alpha=0.1)
         plt.xlim(xlim)
         plt.xlabel('Brain', fontsize=16)
         plt.ylabel('#Signal', fontsize=16)
@@ -595,11 +595,13 @@ class BrainsSignalAnalyzer(object):
 
             df_corr = df.drop(['modality'], axis=1).rename(columns=rmapper)
             corr = df_corr.corr(min_periods=10)
-            corr[corr < 0] = 0
+            cnames = corr[corr.sum() == 0].index.to_numpy().tolist()
+            corr = corr.drop(cnames).drop(cnames, axis=1)
 
             print(corr.mean().mean(), corr.max().min(), corr.min().min())
             corr = corr.fillna(0)
             clust_map = sns.clustermap(corr, cmap='coolwarm')
+            clust_map.cax.set_visible(False)
 
             names = df_corr.columns
             rids = df.columns[:-1]
@@ -641,8 +643,8 @@ if __name__ == '__main__':
         precomputed_somata = 'precomputed_somata.csv'
         #bssa.plot_region_distrs_modalities(distr_dir)
         #bssa.plot_region_distrs_labeling2_comp(precomputed_somata, precomputed_signal, region_level=1)
-        #bssa.plot_distribution_all(precomputed_somata, precomputed_signal, region_level=1)
-        bssa.plot_sparsity_versus_labeling(precomputed_somata, precomputed_signal, region_level=1)
+        bssa.plot_distribution_all(precomputed_somata, precomputed_signal, region_level=1)
+        #bssa.plot_sparsity_versus_labeling(precomputed_somata, precomputed_signal, region_level=1)
         
     if 0:
         bssa.calc_left_right_corr(distr_dir)
