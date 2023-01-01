@@ -17,11 +17,13 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from matplotlib.patches import Patch
 import seaborn as sns
+import torch
 
 import hdbscan
 import umap
 
-from file_io import load_image
+from file_io import load_image, save_image
+from image_utils import get_mip_image
 from anatomy.anatomy_config import REGION671, MASK_CCF25_FILE
 from anatomy.anatomy_core import parse_id_map, parse_ana_tree, parse_regions316
 
@@ -368,7 +370,8 @@ class BrainsSignalAnalyzer(object):
         hi = hi1 | hi2
         hsom = hsom[hi]
         hsig = hsig[hi]
-        
+        print('hsom: ', hsom)
+        print('hsig: ', hsig)
         
         
         # plot the the figures using function `plot_region_distrs_labeling2`
@@ -395,7 +398,6 @@ class BrainsSignalAnalyzer(object):
         dfn1 = preprocess(df_somata, region_level=region_level)
         dfn2 = preprocess(df_signal, region_level=region_level)
 
-        
         som_reg = dfn1.sum().drop('label')
         #som_reg /= som_reg.sum()
         som_bra = dfn1.drop('label', axis=1).sum(axis=1)
@@ -417,7 +419,7 @@ class BrainsSignalAnalyzer(object):
         
         # merge the data
         rdistr = np.vstack((som_reg.to_numpy(), sig_reg.to_numpy()))
-        ind1 = rdistr[0].argsort()
+        ind1 = rdistr[1].argsort()
         rdistr = rdistr[:,ind1].reshape(-1)
         reg = pd.DataFrame(
             {
@@ -434,16 +436,15 @@ class BrainsSignalAnalyzer(object):
             bdistr.loc[idx, 'som'] = som_bra.loc[idx]
         bdistr = bdistr.to_numpy().transpose()
 
-        ind2 = bdistr[0].argsort()
+        ind2 = bdistr[1].argsort()
         bdistr = bdistr[:,ind2].reshape(-1)
         bra = pd.DataFrame(
             {
                 'brain-wide distr': bdistr, 
-                'region_id':np.hstack((som_bra.index[ind2], sig_bra.index[ind2])), 
+                'brain_id':np.hstack((sig_bra.index[ind2], sig_bra.index[ind2])), 
                 'brain':np.hstack((range(som_bra.shape[0]), range(sig_bra.shape[0]))),
                 'type': ['somata' for i in range(som_bra.shape[0])] + ['signal' for i in range(sig_bra.shape[0])]
             })
-        
 
         # plotting
         sns.set_style("darkgrid")
@@ -452,7 +453,7 @@ class BrainsSignalAnalyzer(object):
         )
         plt.yscale('log')
         plt.xlabel('Brain region', fontsize=16)
-        plt.ylabel('Number of somata', fontsize=16)
+        plt.ylabel('#Signal', fontsize=16)
         plt.legend(fontsize=14, loc='lower right')
         plt.savefig('regional_distr.png', dpi=300)
         plt.close('all')
@@ -462,13 +463,77 @@ class BrainsSignalAnalyzer(object):
         )
         plt.yscale('log')
         xlim = plt.xlim()
-        plt.axvspan(nsom, xlim[1], color='#388E3C', alpha=0.1)
+        #plt.axvspan(nsom, xlim[1], color='#388E3C', alpha=0.1)
         plt.xlim(xlim)
         plt.xlabel('Brain', fontsize=16)
-        plt.ylabel('Number of somata', fontsize=16)
+        plt.ylabel('#Signal', fontsize=16)
         plt.legend(fontsize=14, loc='lower right')
         plt.savefig('brainwide_distr.png', dpi=300)
         plt.close('all')
+
+    def plot_sparsity_versus_labeling(self, precomputed_somata, precomputed_signal, region_level=1):
+        def preprocess(df, region_level):
+            format_precomputed_df(df, last_column='modality')
+            df = self.map_to_coarse_regions(df, level=region_level, last_column='modality')
+            df = self.convert_modality_to_label(df, normalize=False)
+            df = df[df.label != '']
+            df = df[df.label != 'Ai139']
+            df.sort_values(by=['label'], ascending=[True], inplace=True)
+            return df
+
+        df_somata = pd.read_csv(precomputed_somata, index_col=0)
+        df_signal = pd.read_csv(precomputed_signal, index_col=0)
+        dfn1 = preprocess(df_somata, region_level=region_level)
+        dfn2 = preprocess(df_signal, region_level=region_level)
+
+        # somata vs labeling
+        som_bra = dfn2.sum(axis=1).rename('signal').to_frame()
+        som_bra['label'] = dfn2['label']
+        plt.figure(figsize=(8,8))
+        sns.set_style("darkgrid")
+        sns.scatterplot(data=som_bra, x='signal', y='label')
+        plt.xscale('log')
+        plt.xlabel('#Signal', fontsize=20)
+        plt.ylabel('Labeling', fontsize=20)
+        plt.yticks(fontsize=12)
+        plt.tight_layout()
+        plt.savefig('labeling_sparsity.png', dpi=300)
+        plt.close('all')
+
+    def regional_level_plexing(self, precomputed_signal, brain, pos_thresh=0.001):
+        df_signal = pd.read_csv(precomputed_signal, index_col=0)
+        format_precomputed_df(df_signal, last_column='modality')
+        
+        distr = df_signal.loc[brain].drop(['modality'])
+
+        mask = load_image(MASK_CCF25_FILE)
+        vpos = distr.sum() * pos_thresh
+        pos_regions = distr[distr > vpos].index
+        # the processing of large number of regions masking is expensive, use gpu
+        mask_gpu = torch.from_numpy(mask.astype(np.int64)).cuda()
+        m = torch.zeros(mask_gpu.shape, dtype=torch.bool, device=mask_gpu.device)
+        m.fill_(0)
+        for i, r in enumerate(pos_regions):
+            print(i, r)
+            m = m | (mask_gpu == r)
+        print(m.sum().item(), m.size())
+        mc = m.cpu().numpy()
+        del mask_gpu, m
+
+        mask_out = np.zeros(mask.shape, dtype=np.uint8)
+        mask_out[mask > 0] = 1
+        mask_out[mc] = 2
+
+        # coloring
+        mip1 = get_mip_image(mask_out, 0)
+        cmip1 = np.zeros((*mip1.shape, 3), dtype=np.uint8)
+        
+        color = (0,255,255)
+        bg = (123,123,123)
+        cmip1[mip1==2] = color
+        cmip1[mip1==1] = bg
+        save_image('mip1.png', cmip1)
+
 
     def convert_modality_to_label(self, df, label_file='./fMOST-Zeng_labels_edited.csv', normalize=True):
         # normalize
@@ -542,10 +607,11 @@ class BrainsSignalAnalyzer(object):
                 ind = clust_map.dendrogram_col.reordered_ind[i]
                 region_name = names[ind]
                 region_id = rids[ind]
-                print(f'[{i}]{region_name}', end=': ')
-                for r in self.ana_dict[region_id]['structure_id_path']:
-                    print(self.ana_dict[r]['acronym'], end=', ')
-                print('')
+                #print(f'[{i}]{region_name}', end=': ')
+                #for r in self.ana_dict[region_id]['structure_id_path']:
+                #    print(self.ana_dict[r]['acronym'], end=', ')
+                #print('')
+                print(region_name, end=', ')
             plt.xticks([])
             plt.yticks([])
             #plt.xlabel('Brain region ID')
@@ -575,14 +641,15 @@ if __name__ == '__main__':
         precomputed_somata = 'precomputed_somata.csv'
         #bssa.plot_region_distrs_modalities(distr_dir)
         #bssa.plot_region_distrs_labeling2_comp(precomputed_somata, precomputed_signal, region_level=1)
-        bssa.plot_distribution_all(precomputed_somata, precomputed_signal, region_level=1)
+        #bssa.plot_distribution_all(precomputed_somata, precomputed_signal, region_level=1)
+        bssa.plot_sparsity_versus_labeling(precomputed_somata, precomputed_signal, region_level=1)
         
     if 0:
         bssa.calc_left_right_corr(distr_dir)
 
     if 0:
-        #bssa.corr_clustermap(distr_dir)
-        bssa.load_somata()
+        bssa.corr_clustermap(distr_dir)
+        #bssa.load_somata()
     
         
 
