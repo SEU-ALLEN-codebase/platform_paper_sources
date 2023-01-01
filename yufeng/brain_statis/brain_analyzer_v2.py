@@ -405,10 +405,9 @@ class BrainsSignalAnalyzer(object):
         #som_bra /= (som_bra.sum() * sig_bra.shape[0] / nsom)
 
         sig_reg = dfn2.sum().drop('label')
-        sig_reg /= (sig_reg.mean() / som_reg.mean())
+        #sig_reg /= (sig_reg.mean() / som_reg.mean())
         sig_bra = dfn2.drop('label', axis=1).sum(axis=1)
-        #sig_bra /= sig_bra.sum()
-        sig_bra /= (sig_bra.mean() / som_bra.mean())
+        #sig_bra /= (sig_bra.mean() / som_bra.mean())
 
         # fill the missing values
         for idx in sig_bra.index:
@@ -419,7 +418,7 @@ class BrainsSignalAnalyzer(object):
         
         # merge the data
         rdistr = np.vstack((som_reg.to_numpy(), sig_reg.to_numpy()))
-        ind1 = rdistr[1].argsort()
+        ind1 = rdistr[0].argsort()
         rdistr = rdistr[:,ind1].reshape(-1)
         reg = pd.DataFrame(
             {
@@ -436,7 +435,7 @@ class BrainsSignalAnalyzer(object):
             bdistr.loc[idx, 'som'] = som_bra.loc[idx]
         bdistr = bdistr.to_numpy().transpose()
 
-        ind2 = bdistr[1].argsort()
+        ind2 = bdistr[0].argsort()
         bdistr = bdistr[:,ind2].reshape(-1)
         bra = pd.DataFrame(
             {
@@ -446,30 +445,65 @@ class BrainsSignalAnalyzer(object):
                 'type': ['somata' for i in range(som_bra.shape[0])] + ['signal' for i in range(sig_bra.shape[0])]
             })
 
-        # plotting
+        #######################################
+        # Region plotting
         sns.set_style("darkgrid")
-        sns.scatterplot(
-            data=reg, x="region", y="regional distr", hue="type"
+        ax11 = sns.scatterplot(
+            data=reg[reg['type'] == 'somata'], x="region", y="regional distr", 
+            label='somata'
         )
-        plt.yscale('log')
-        plt.xlabel('Brain region', fontsize=16)
-        plt.ylabel('#Signal', fontsize=16)
-        plt.legend(fontsize=14, loc='lower right')
+        ax11.set_yscale('log')
+        ax11.legend(loc='upper left')
+        ax11.set_xlabel('Brain region')
+        ax11.set_ylabel('#Somata')
+
+        ax12 = ax11.twinx()
+        sns.scatterplot(
+            data=reg[reg['type'] == 'signal'], x="region", y="regional distr", 
+            color='magenta', label='signal',
+            ax=ax12
+        )
+        ax12.set_yscale('log')
+        ax12.legend(loc='lower right')
+        ax12.set_ylabel('#Signal')
+
+        #plt.xlabel('Brain region', fontsize=16)
+        #plt.ylabel('#Signal', fontsize=16)
+        #plt.legend(, fontsize=14, loc='lower right')
         plt.savefig('regional_distr.png', dpi=300)
         plt.close('all')
 
-        sns.scatterplot(
-            data=bra, x="brain", y="brain-wide distr", hue="type"
+
+        ######################################
+        # Brain plotting
+        ax11 = sns.scatterplot(
+            data=bra[bra['type'] == 'somata'], x="brain", y="brain-wide distr", 
+            label='somata'
         )
-        plt.yscale('log')
+        ax11.set_yscale('log')
+        ax11.legend(loc='upper left')
+        ax11.set_xlabel('Brain')
+        ax11.set_ylabel('#Somata')
+
+        ax12 = ax11.twinx()
+        sns.scatterplot(
+            data=bra[bra['type'] == 'signal'], x="brain", y="brain-wide distr", 
+            color='magenta', label='signal',
+            ax=ax12
+        )
+        ax12.set_yscale('log')
+        ax12.legend(loc='lower right')
+        ax12.set_ylabel('#Signal')
+
+        #plt.xlabel('Brain region', fontsize=16)
+        #plt.ylabel('#Signal', fontsize=16)
+        #plt.legend(, fontsize=14, loc='lower right')
         xlim = plt.xlim()
         plt.axvspan(nsom, xlim[1], color='#388E3C', alpha=0.1)
         plt.xlim(xlim)
-        plt.xlabel('Brain', fontsize=16)
-        plt.ylabel('#Signal', fontsize=16)
-        plt.legend(fontsize=14, loc='lower right')
         plt.savefig('brainwide_distr.png', dpi=300)
         plt.close('all')
+
 
     def plot_sparsity_versus_labeling(self, precomputed_somata, precomputed_signal, region_level=1):
         def preprocess(df, region_level):
