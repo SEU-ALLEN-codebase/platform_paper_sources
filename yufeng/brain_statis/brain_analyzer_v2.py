@@ -447,6 +447,7 @@ class BrainsSignalAnalyzer(object):
 
         #######################################
         # Region plotting
+        label_fontsize = 16
         sns.set_style("darkgrid")
         ax11 = sns.scatterplot(
             data=reg[reg['type'] == 'somata'], x="region", y="regional distr", 
@@ -454,8 +455,8 @@ class BrainsSignalAnalyzer(object):
         )
         ax11.set_yscale('log')
         ax11.legend(loc='upper left')
-        ax11.set_xlabel('Brain region')
-        ax11.set_ylabel('#Somata')
+        ax11.set_xlabel('Brain region', fontsize=label_fontsize)
+        ax11.set_ylabel('Number of somata', fontsize=label_fontsize)
 
         ax12 = ax11.twinx()
         sns.scatterplot(
@@ -465,11 +466,8 @@ class BrainsSignalAnalyzer(object):
         )
         ax12.set_yscale('log')
         ax12.legend(loc='lower right')
-        ax12.set_ylabel('#Signal')
+        ax12.set_ylabel('Number of labeled voxels', fontsize=label_fontsize)
 
-        #plt.xlabel('Brain region', fontsize=16)
-        #plt.ylabel('#Signal', fontsize=16)
-        #plt.legend(, fontsize=14, loc='lower right')
         plt.savefig('regional_distr.png', dpi=300)
         plt.close('all')
 
@@ -482,8 +480,8 @@ class BrainsSignalAnalyzer(object):
         )
         ax11.set_yscale('log')
         ax11.legend(loc='upper left')
-        ax11.set_xlabel('Brain')
-        ax11.set_ylabel('#Somata')
+        ax11.set_xlabel('Brain', fontsize=label_fontsize)
+        ax11.set_ylabel('Number of somata', fontsize=label_fontsize)
 
         ax12 = ax11.twinx()
         sns.scatterplot(
@@ -493,11 +491,8 @@ class BrainsSignalAnalyzer(object):
         )
         ax12.set_yscale('log')
         ax12.legend(loc='lower right')
-        ax12.set_ylabel('#Signal')
+        ax12.set_ylabel('Number of labeled voxels', fontsize=label_fontsize)
 
-        #plt.xlabel('Brain region', fontsize=16)
-        #plt.ylabel('#Signal', fontsize=16)
-        #plt.legend(, fontsize=14, loc='lower right')
         xlim = plt.xlim()
         plt.axvspan(nsom, xlim[1], color='#388E3C', alpha=0.1)
         plt.xlim(xlim)
@@ -510,6 +505,18 @@ class BrainsSignalAnalyzer(object):
             format_precomputed_df(df, last_column='modality')
             df = self.map_to_coarse_regions(df, level=region_level, last_column='modality')
             df = self.convert_modality_to_label(df, normalize=False)
+            # disregard GFP variance
+            labels = []
+            for label in df['label']:
+                print(label, end=' --> ')
+                label = label.split(';')[0]
+                if label.endswith('-neo'):
+                    label = label[:-4]
+                #label = '-'.join(label.split('-')[1:])
+                print(label)
+                labels.append(label)
+            df['label'] = labels
+
             df = df[df.label != '']
             df = df[df.label != 'Ai139']
             df.sort_values(by=['label'], ascending=[True], inplace=True)
@@ -527,7 +534,7 @@ class BrainsSignalAnalyzer(object):
         sns.set_style("darkgrid")
         sns.scatterplot(data=som_bra, x='signal', y='label')
         plt.xscale('log')
-        plt.xlabel('#Signal', fontsize=20)
+        plt.xlabel('Number of labeled voxels', fontsize=20)
         plt.ylabel('Labeling', fontsize=20)
         plt.yticks(fontsize=12)
         plt.tight_layout()
@@ -613,9 +620,11 @@ class BrainsSignalAnalyzer(object):
         return ndf
         
 
-    def corr_clustermap(self, distr_dir):
-        df = self.parse_distrs(distr_dir)
-        df = self.map_to_coarse_regions(df, level=1)
+    def corr_clustermap(self, precomputed_signal):
+        #df = self.parse_distrs(distr_dir)
+        df = pd.read_csv(precomputed_signal, index_col=0)
+        format_precomputed_df(df, last_column='modality')
+        df = self.map_to_coarse_regions(df, level=0)
 
         plot_corr = True
         if self.plot and plot_corr:
@@ -628,31 +637,37 @@ class BrainsSignalAnalyzer(object):
 
 
             df_corr = df.drop(['modality'], axis=1).rename(columns=rmapper)
-            corr = df_corr.corr(min_periods=10)
+            normalize = True
+            if normalize:
+                df_corr = df_corr.div(df_corr.sum(axis=1), axis=0)
+            
+            df_corr.replace(0, np.nan, inplace=True)
+            corr = df_corr.corr(min_periods=20, method='spearman')
             cnames = corr[corr.sum() == 0].index.to_numpy().tolist()
             corr = corr.drop(cnames).drop(cnames, axis=1)
 
-            print(corr.mean().mean(), corr.max().min(), corr.min().min())
+            print(corr.shape, corr.mean().mean(), corr.max().min(), corr.min().min())
             corr = corr.fillna(0)
+            corr[corr > 0.8] = 0.8
             clust_map = sns.clustermap(corr, cmap='coolwarm')
             clust_map.cax.set_visible(False)
+            clust_map.ax_row_dendrogram.set_visible(False)
+            clust_map.ax_col_dendrogram.set_visible(False)
 
-            names = df_corr.columns
-            rids = df.columns[:-1]
+            names = corr.columns
             for i in range(corr.shape[0]):
                 ind = clust_map.dendrogram_col.reordered_ind[i]
                 region_name = names[ind]
-                region_id = rids[ind]
                 #print(f'[{i}]{region_name}', end=': ')
                 #for r in self.ana_dict[region_id]['structure_id_path']:
                 #    print(self.ana_dict[r]['acronym'], end=', ')
                 #print('')
                 print(region_name, end=', ')
+            print('\n')
             plt.xticks([])
             plt.yticks([])
-            #plt.xlabel('Brain region ID')
-            #plt.ylabel('Brain region ID')
             #plt.title("Correlation coefficients between labeled regions")
+            plt.tight_layout()
             plt.savefig('region_corr.png', dpi=300)
             plt.close()
         
@@ -672,7 +687,7 @@ if __name__ == '__main__':
 
     bssa = BrainsSignalAnalyzer(res_id=res_id, plot=True)
 
-    if 1:
+    if 0:
         precomputed_signal = 'precomputed_distrs.csv'
         precomputed_somata = 'precomputed_somata.csv'
         #bssa.plot_region_distrs_modalities(distr_dir)
@@ -683,8 +698,9 @@ if __name__ == '__main__':
     if 0:
         bssa.calc_left_right_corr(distr_dir)
 
-    if 0:
-        bssa.corr_clustermap(distr_dir)
+    if 1:
+        precomputed_signal = 'precomputed_distrs.csv'
+        bssa.corr_clustermap(precomputed_signal)
         #bssa.load_somata()
     
         

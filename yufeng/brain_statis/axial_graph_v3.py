@@ -295,15 +295,9 @@ def graph_for_corr_separate(ndict, df_centers, df_distr, col_name, ana_dict):
         343: 'cyan',  # BS: IB(549(TH)+HY), MB, HB
     }
 
-    #rmapper = {}
-    #for idx in df_distr.columns:
-    #    if idx != 'label':
-    #        rmapper[idx] = ana_dict[idx]['acronym']
-
-
-    df_corr = df_distr.drop(['label'], axis=1)#.rename(columns=rmapper)
-    corr = df_corr.corr(min_periods=10)
-
+    module1 = "GPi, VTA, PPN".split(', ')
+    module2 = "LIN, SPVI, SPVO, SOC, NTS, RO, TRN, PAS, P5, PGRNl, I5, Acs5, ICB, y, PARN, ISN, MDRNv, MARN, DMX, PC5, AMB, PRP, IRN, LRN, ACVII".split(', ')
+    module3 = "SCs, NPC, LGd, IntG, PO, MPT, NOT, PPT".split(', ')
 
     TR = initialize_graph(df_centers, ndict, ana_dict, col_name)
 
@@ -311,21 +305,73 @@ def graph_for_corr_separate(ndict, df_centers, df_distr, col_name, ana_dict):
     nodes = TR.nodes
     TR.graph['label'] = f'\nlabel'
 
-    for prid in corr.index:
-        ccs = corr[prid]
-        prname = ana_dict[prid]['acronym']
-        print(prname)
+    for prid in df_distr.columns.drop(['label']):
+        rname = ana_dict[prid]['acronym']
 
-        for rid in ccs.index:
-            cc = ccs.loc[rid]
-            rname = ana_dict[rid]['acronym']
-            #print(rid, rname, cc)
-            if cc > 0.8:
+        if rname in module1:
+            pw = 25
+            bcolor = 'red'
+        elif rname in module2:
+            pw = 25
+            bcolor = 'orange'
+        elif rname in module3:
+            pw = 25
+            bcolor = 'black'
+        else:
+            pw = 1
+            bcolor = 'black'
+
+        id_path = ana_dict[prid]['structure_id_path']
+        color, sid = get_color(id_path, cmap)
+        if rname in nodes:
+            nodes[rname]['penwidth'] = pw
+            nodes[rname]['fillcolor'] = color
+            nodes[rname]['style'] = 'filled'
+            nodes[rname]['height'] = 2
+            nodes[rname]['width'] = 3.5
+            nodes[rname]['fontsize'] = 80
+            nodes[rname]['color'] = bcolor
+
+    A = nx.nx_agraph.to_agraph(TR)  # convert to a graphviz graph
+    A.draw(f"modularized_corr.png", prog='dot')  # Draw with pygraphviz
+
+    return TR
+
+def graph_for_all_modules(ndict, df_centers, df_distr, col_name, ana_dict, module_file='modules.txt'):
+    cmap = {
+        688: 'orange', # CTX
+        623: 'green', # CNU: STR + PAL
+        512: 'magenta',  # CB,
+        343: 'cyan',  # BS: IB(549(TH)+HY), MB, HB
+    }
+
+    modules = []
+    with open('modules.txt') as fp:
+        for line in fp.readlines():
+            line = line.strip()
+            if not line: continue
+            regions = line.split(', ')
+            modules.append(regions)
+
+    TR = initialize_graph(df_centers, ndict, ana_dict, col_name)
+
+    print(f'==> Processing for somata')
+    nodes = TR.nodes
+    TR.graph['label'] = f'\nlabel'
+
+    for i, module in enumerate(modules):
+        print(f'--> Module {i+1}')
+        for prid in df_distr.columns.drop(['label']):
+            rname = ana_dict[prid]['acronym']
+
+            if rname in module:
                 pw = 25
+                bcolor = 'red'
             else:
                 pw = 1
+                bcolor = 'black'
 
-            id_path = ana_dict[rid]['structure_id_path']
+            id_path = ana_dict[prid]['structure_id_path']
             color, sid = get_color(id_path, cmap)
             if rname in nodes:
                 nodes[rname]['penwidth'] = pw
@@ -334,15 +380,61 @@ def graph_for_corr_separate(ndict, df_centers, df_distr, col_name, ana_dict):
                 nodes[rname]['height'] = 2
                 nodes[rname]['width'] = 3.5
                 nodes[rname]['fontsize'] = 80
-                if rname == prname:
-                    nodes[rname]['color'] = 'red'
-                else:
-                    nodes[rname]['color'] = 'black'
+                nodes[rname]['color'] = bcolor
 
         A = nx.nx_agraph.to_agraph(TR)  # convert to a graphviz graph
-        A.draw(f"{prname}.png", prog='dot')  # Draw with pygraphviz
+        A.draw(f"module{i+1}_graph.png", prog='dot')  # Draw with pygraphviz
 
     return TR
+
+def graph_for_correlated_regions(ndict, df_centers, df_distr, col_name, ana_dict):
+    cmap = {
+        688: 'orange', # CTX
+        623: 'green', # CNU: STR + PAL
+        512: 'magenta',  # CB,
+        343: 'cyan',  # BS: IB(549(TH)+HY), MB, HB
+    }
+
+    inode = 'MOp'
+    #onodes = "IG, ACAd, ILA, ACAv, AD, AId, AIp, AIv, AM, FRP, AT, SSp-bfd, SSp-ll, SSp-m, SSp-n, SSp-tr, SSp-ul, SSs, VISp, VISam, VISal, VISl, VISrl, SPVO, VISpm, TEa, CL, V, VISC, VM, ORBl, VPLpc, ORBm, VPMpc, ORBvl, PARN, RSPagl, PCG, ENTl, PERI, PF, PL, MOp, MOs, AUDp, AUDd, AUDv, AUDpo, POL, GU, PRNc, IAD, SSp-un, VISa, VISli, VISpor, VMPO".split(', ')   # cc thresh 0.2
+    onodes = "ACAd, ACAv, AD, AId, AIv, FRP, SSp-bfd, SSp-ll, SSp-m, SSp-n, SSp-tr, SSp-ul, SSs, VISal, VM, MOp, MOs, AUDd, AUDpo, GU, SSp-un, VISa, VISli".split(', ') # cc thresh 0.4
+
+    TR = initialize_graph(df_centers, ndict, ana_dict, col_name)
+
+    print(f'==> Processing for somata')
+    nodes = TR.nodes
+    TR.graph['label'] = f'\nlabel'
+
+    for prid in df_distr.columns.drop(['label']):
+        rname = ana_dict[prid]['acronym']
+
+        if rname == 'MOp':
+            pw = 25
+            bcolor = 'red'
+        elif rname in onodes:
+            pw = 25
+            bcolor = 'black'
+        else:
+            pw = 1
+            bcolor = 'black'
+
+        id_path = ana_dict[prid]['structure_id_path']
+        color, sid = get_color(id_path, cmap)
+        if rname in nodes:
+            nodes[rname]['penwidth'] = pw
+            nodes[rname]['fillcolor'] = color
+            nodes[rname]['style'] = 'filled'
+            nodes[rname]['height'] = 2
+            nodes[rname]['width'] = 3.5
+            nodes[rname]['fontsize'] = 80
+            nodes[rname]['color'] = bcolor
+
+    A = nx.nx_agraph.to_agraph(TR)  # convert to a graphviz graph
+    A.draw(f"{inode}_corr.png", prog='dot')  # Draw with pygraphviz
+
+    return TR
+
+
 
 def draw_AP_graph_with_corr(center_file, precomputed_signal, neighbor_file, ignore_lr=True, last_column='modality', nr=70):
     print(f'Estimate center information')
@@ -485,7 +577,9 @@ def draw_AP_graph_corr(center_file, precomputed_signal, neighbor_file, ignore_lr
     df_distr = bssa.convert_modality_to_label(df_distr, normalize=False)
 
     # assign connection according to pairwise CC
-    graph_for_corr_separate(ndict, df_centers, df_distr, col_name, ana_dict)
+    #graph_for_corr_separate(ndict, df_centers, df_distr, col_name, ana_dict)
+    #graph_for_correlated_regions(ndict, df_centers, df_distr, col_name, ana_dict)
+    graph_for_all_modules(ndict, df_centers, df_distr, col_name, ana_dict)
 
 if __name__ == '__main__':
     nr = 316
