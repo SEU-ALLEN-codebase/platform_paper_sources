@@ -110,11 +110,7 @@ class MEFeatures:
         df_mef.to_csv(mefeature_file, float_format='%g')
 
     def calc_normalized_regional_mefeatures(self, mefeature_file, nmefeature_file):
-        df = pd.read_csv(mefeature_file, index_col=0)
-        feats = df.loc[:, self.__FEAT_ALL__]
-        df.loc[:, self.__FEAT_ALL__] = (feats - feats.mean()) / (feats.std() + 1e-10)
-
-        df.to_csv(nmefeature_file, float_format='%g')
+        pass
 
 if __name__ == '__main__':
     feature_file = '../data/lm_features_d22_all.csv'
