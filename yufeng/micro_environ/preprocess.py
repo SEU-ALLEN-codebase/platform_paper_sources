@@ -32,6 +32,13 @@ def add_r316_regions(df, ana_dict, mask_regions):
     
     new_rids = []
     new_rnames = []
+    brain_structures = []
+    struct_dict = {
+        688: 'CTX',
+        623: 'CNU',
+        512: 'CB',
+        343: 'BS'
+    }
     for idx in df['region_id_r671']:
         if idx in rc_dict:
             new_id = rc_dict[idx]
@@ -39,12 +46,25 @@ def add_r316_regions(df, ana_dict, mask_regions):
             new_rids.append(new_id)
             new_rname = ana_dict[new_id]['acronym']
             new_rnames.append(new_rname)
+            
+            # find the brain structure
+            for pid in ana_dict[new_id]['structure_id_path']:
+                if pid in struct_dict:
+                    struct_name = struct_dict[pid]
+                    brain_structures.append(struct_name)
+                    break
+            else:
+                print(f'!! {new_rname}')
+                brain_structures.append(np.NaN)
+                
         else:
             new_rids.append(0)
             new_rnames.append(np.NaN)
+            brain_structures.append(np.NaN)
 
     df['region_id_r316'] = new_rids
     df['region_name_r316'] = new_rnames
+    df['brain_structure'] = brain_structures
     
     return df
         

@@ -104,12 +104,13 @@ class MEFeatures:
             feat = mef.loc[region_index, __FEAT_ALL__]
             rid = mef.loc[region_index[0], rkey]
             rname = mef.loc[region_index[0], rnkey]
+            struct = mef.loc[region_index[0], 'brain_structure']
             fmean = feat.mean().to_numpy().tolist()
             fstd = feat.std().to_numpy().tolist()
             index.append(rid)
-            output.append([rname, len(region_index), *fmean, *fstd])
+            output.append([rname, struct, len(region_index), *fmean, *fstd])
         
-        columns = [rnkey, 'NumRecons']
+        columns = [rnkey, 'brain_structure', 'NumRecons']
         columns.extend([f'{fn}_mean' for fn in __FEAT_ALL__])
         columns.extend([f'{fn}_std' for fn in __FEAT_ALL__])
         rmef = pd.DataFrame(output, index=index, columns=columns)
@@ -118,7 +119,7 @@ class MEFeatures:
         
 
 if __name__ == '__main__':
-    nodes_range = (300, 1500)
+    nodes_range = (500, 1500)
     feature_file = '../data/lm_features_d22_all.csv'
     mefeature_file = f'../data/micro_env_features_d66_nodes{nodes_range[0]}-{nodes_range[1]}.csv'
     rmefeature_file = f'{mefeature_file[:-4]}_regional.csv'
