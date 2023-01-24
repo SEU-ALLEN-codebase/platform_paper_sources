@@ -61,15 +61,39 @@ if 0:
 
 
 # Heatmap & clustermap of whole-train correlation coefficients
-if 0:
+if 1:
+    def plot_sd_matrix(brain_structures, corr_raw, figname):
+        fig, ax_sd = plt.subplots(figsize=(6,6))
+        structs = np.unique(brain_structures)
+        nstructs = len(structs)
+        sd_matrix = np.zeros((nstructs, nstructs))
+        for i in range(nstructs):
+            struct1 = corr_raw.index[brain_structures == structs[i]]
+            for j in range(i, nstructs):
+                struct2 = corr_raw.index[brain_structures == structs[j]]
+                cc = corr_raw.loc[struct1, struct2].values.mean()
+                sd_matrix[i][j] = cc
+                sd_matrix[j][i] = cc
+        df_sd = pd.DataFrame(sd_matrix, columns=structs, index=structs)
+        sns.heatmap(data=df_sd, ax=ax_sd, cmap='coolwarm', annot=True, 
+                    annot_kws={"size": 25}, cbar=False)
+        ax_sd.set_title('SD matrix', fontsize=40)
+        ax_sd.set_xlabel('', fontdict={'fontsize': 18})
+        ax_sd.set_ylabel('', fontdict={'fontsize': 18})
+        plt.setp(ax_sd.xaxis.get_majorticklabels(), fontsize=25)
+        plt.setp(ax_sd.yaxis.get_majorticklabels(), fontsize=25)
+        plt.savefig(figname, dpi=300)
+        plt.close('all')
+
     def mean_clustermap(rmef_hm, figname='temp.png'):
-        rmef_hm.set_index('region_name_r316', inplace=True)
+        rmef_hm = rmef_hm.copy()
         brain_structures = rmef_hm.pop('brain_structure')
         rmef_hm = rmef_hm.transpose()
         #rmef_hm.clip(-2, 2, inplace=True)
         
         rmef_hm.reset_index(inplace=True, drop=True)
         corr = rmef_hm.corr()
+        corr_raw = corr.copy()
         corr[corr > 0.9] = 0.9
 
         lut = dict(zip(np.unique(brain_structures), "rbgy"))
@@ -100,16 +124,19 @@ if 0:
         plt.setp(cm.ax_heatmap.xaxis.get_majorticklabels(), fontsize=8)
 
         cm.cax.set_visible(False)
-        cm.ax_row_dendrogram.set_visible(False)
+        #cm.ax_row_dendrogram.set_visible(False)
         cm.ax_col_dendrogram.set_visible(False)
         plt.tight_layout()
-        plt.savefig(figname, dpi=600)
+        plt.savefig(figname, dpi=300)
         plt.close('all')
+
+        # quantitative estimation of diversity and stereotypy
+        plot_sd_matrix(brain_structures, corr_raw, f'{figname[:-4]}_sd.png')
 
         return tlabels
 
     def std_heatmap(rmef_hm, figname='temp.png', defined_order=None):
-        rmef_hm.set_index('region_name_r316', inplace=True)
+        rmef_hm = rmef_hm.copy()
         brain_structures = rmef_hm.pop('brain_structure')
         rmef_hm = rmef_hm.transpose()
         #rmef_hm.clip(-2, 2, inplace=True)
@@ -144,7 +171,7 @@ if 0:
         #plt.setp(ax_heatmap.xaxis.get_majorticklabels(), fontsize=8)
 
         plt.tight_layout()
-        plt.savefig(figname, dpi=600)
+        plt.savefig(figname, dpi=300)
         plt.close('all')
 
         return defined_order
@@ -180,10 +207,69 @@ if 0:
         #plt.setp(ax_heatmap.xaxis.get_majorticklabels(), fontsize=8)
 
         plt.tight_layout()
-        plt.savefig('spatial_distance.png', dpi=600)
+        plt.savefig('spatial_distance.png', dpi=300)
         plt.close('all')
 
+    def plot_spatial_enhanced_corr(rmef_hm, center_file, figname):
+        rmef_hm = rmef_hm.copy()
+        brain_structures = rmef_hm.pop('brain_structure')
+        rmef_hm = rmef_hm.transpose()
+        #rmef_hm.clip(-2, 2, inplace=True)
 
+        rmef_hm.reset_index(inplace=True, drop=True)
+        corr = rmef_hm.corr()
+        #corr[corr > 0.9] = 0.9
+
+        # load the position
+        df_c = pd.read_csv(center_file)
+        df_c = df_c[df_c['right'] == 0]
+        df_c.set_index('region_name', inplace=True)
+        df_c = df_c.loc[corr.columns, ['centerX', 'centerY', 'centerZ']] * 25.
+
+        # enhance by pdist
+        pdist = distance_matrix(df_c, df_c)
+        pdist /= pdist.max()
+        epdist = np.exp(-pdist)
+        corr = epdist * corr
+        corr_raw = corr.copy()
+        #corr[corr > 0.7] = 0.7
+        #corr[corr < 0] = 0
+
+        lut = dict(zip(np.unique(brain_structures), "rbgy"))
+        row_colors = brain_structures.map(lut)
+        cm = sns.clustermap(data=corr, cmap='coolwarm', xticklabels=1, yticklabels=1, row_colors=row_colors)
+
+        # change the ticklabels
+        cm.ax_heatmap.set_title('spatial_enhanced-mean-features', fontsize=25)
+        cm.ax_heatmap.set_xlabel('Regions', fontdict={'fontsize': 18})
+        cm.ax_heatmap.set_ylabel('', fontdict={'fontsize': 18})
+        tlabels = corr.columns[cm.dendrogram_col.reordered_ind]
+        x_tlabels = []
+        y_tlabels = []
+        for i in range(len(tlabels)):
+            if i % 2 == 0:
+                y_tlabels.append(f'----------{tlabels[i]}')
+                x_tlabels.append(f'{tlabels[i]}----------')
+            else:
+                x_tlabels.append(tlabels[i])
+                y_tlabels.append(tlabels[i])
+
+        cm.ax_heatmap.set_xticklabels(x_tlabels)
+        cm.ax_heatmap.set_yticklabels(y_tlabels)
+        plt.setp(cm.ax_heatmap.yaxis.get_majorticklabels(), fontsize=8)
+        plt.setp(cm.ax_heatmap.xaxis.get_majorticklabels(), fontsize=8)
+
+        cm.cax.set_visible(False)
+        #cm.ax_row_dendrogram.set_visible(False)
+        cm.ax_col_dendrogram.set_visible(False)
+        plt.tight_layout()
+        plt.savefig(figname, dpi=300)
+        plt.close('all')
+
+        plot_sd_matrix(brain_structures, corr_raw, f'{figname[:-4]}_sd.png')
+
+
+        
     # Plot the regional similarity
     nodes = '500-1500'
     rmefeature_file = f'../data/micro_env_features_d66_nodes{nodes}_regional.csv'
@@ -195,17 +281,20 @@ if 0:
     
     rmef = pd.read_csv(rmefeature_file, index_col=0)
     rmef_hm = rmef[['region_name_r316', 'brain_structure', *mean_feat_names]]
+    rmef_hm.set_index('region_name_r316', inplace=True)
+    
     if std_normalize:
         rmef_hm.loc[:, mean_feat_names] = rmef.loc[:,mean_feat_names].to_numpy() / (rmef.loc[:,std_feat_names].to_numpy() + 1e-10)
     rmef_hm_std = rmef[['region_name_r316', 'brain_structure', *std_feat_names]]
+    rmef_hm_std.set_index('region_name_r316', inplace=True)
 
     orders = mean_clustermap(rmef_hm, figname=f'corr_clustermap_mean_nodes{nodes}.png')
-    plot_regional_pdist(center_file, orders)
+    plot_spatial_enhanced_corr(rmef_hm, center_file, figname=f'corr_clustermap_mean_nodes{nodes}_spatialEnhanced.png')
     orders = std_heatmap(rmef_hm_std, figname=f'corr_clustermap_std_nodes{nodes}.png', 
         defined_order=orders)
     
 # feature distribution 
-if 1:
+if 0:
     nodes = '500-1500'
     rmefeature_file = f'../data/micro_env_features_d66_nodes{nodes}_regional.csv'
     #rmefeature_file = 'non-environ_features_nodes500-1500.csv'
