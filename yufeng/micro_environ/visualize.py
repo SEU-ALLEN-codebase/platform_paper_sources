@@ -15,6 +15,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib
 import matplotlib.pyplot as plt
+from scipy.spatial import distance_matrix
 
 from config import __FEAT_NAMES__, __FEAT_ALL__
 
@@ -59,7 +60,8 @@ if 0:
     plt.savefig('mefeature_umap_example.png', dpi=200)
 
 
-if 1:
+# Heatmap & clustermap of whole-train correlation coefficients
+if 0:
     def mean_clustermap(rmef_hm, figname='temp.png'):
         rmef_hm.set_index('region_name_r316', inplace=True)
         brain_structures = rmef_hm.pop('brain_structure')
@@ -143,14 +145,50 @@ if 1:
 
         plt.tight_layout()
         plt.savefig(figname, dpi=600)
+        plt.close('all')
 
         return defined_order
+
+    def plot_regional_pdist(center_file, defined_order):
+        df_c = pd.read_csv(center_file)
+        df_c = df_c[df_c['right'] == 0]
+        df_c.set_index('region_name', inplace=True)
+        df_c = df_c.loc[defined_order, ['centerX', 'centerY', 'centerZ']] * 25.
+        pdist = distance_matrix(df_c, df_c)
+
+        fig, ax_heatmap = plt.subplots(figsize=(8,9.5))
+        ax_heatmap = sns.heatmap(data=pdist, ax=ax_heatmap, cmap='coolwarm_r', 
+            xticklabels=1, yticklabels=False, cbar=False)
+
+        # change the ticklabels
+        ax_heatmap.set_title('spatial distance', fontsize=25)
+        ax_heatmap.set_xlabel('Regions', fontdict={'fontsize': 18})
+        ax_heatmap.set_ylabel('', fontdict={'fontsize': 18})
+        x_tlabels = []
+        y_tlabels = []
+        for i in range(len(defined_order)):
+            if i % 2 == 0:
+                y_tlabels.append(f'----------{defined_order[i]}')
+                x_tlabels.append(f'{defined_order[i]}----------')
+            else:
+                x_tlabels.append(defined_order[i])
+                y_tlabels.append(defined_order[i])
+
+        ax_heatmap.set_xticklabels(x_tlabels)
+        #ax_heatmap.set_yticklabels(y_tlabels)
+        plt.setp(ax_heatmap.yaxis.get_majorticklabels(), fontsize=8)
+        #plt.setp(ax_heatmap.xaxis.get_majorticklabels(), fontsize=8)
+
+        plt.tight_layout()
+        plt.savefig('spatial_distance.png', dpi=600)
+        plt.close('all')
 
 
     # Plot the regional similarity
     nodes = '500-1500'
     rmefeature_file = f'../data/micro_env_features_d66_nodes{nodes}_regional.csv'
     std_normalize = False # normalize by std
+    center_file = '../../brain_statistics/region_centers/region_centers_ccf25_r316.csv'
 
     mean_feat_names = [f'{fn}_mean' for fn in __FEAT_ALL__]
     std_feat_names = [f'{fn}_std' for fn in __FEAT_ALL__]
@@ -162,8 +200,44 @@ if 1:
     rmef_hm_std = rmef[['region_name_r316', 'brain_structure', *std_feat_names]]
 
     orders = mean_clustermap(rmef_hm, figname=f'corr_clustermap_mean_nodes{nodes}.png')
+    plot_regional_pdist(center_file, orders)
     orders = std_heatmap(rmef_hm_std, figname=f'corr_clustermap_std_nodes{nodes}.png', 
         defined_order=orders)
     
+# feature distribution 
+if 1:
+    nodes = '500-1500'
+    rmefeature_file = f'../data/micro_env_features_d66_nodes{nodes}_regional.csv'
+    #rmefeature_file = 'non-environ_features_nodes500-1500.csv'
+    region = 'CP'
+    
+    vis_features = ['Stems', 'Bifurcations', 'Branches', 'Tips', 'Length', 'Volume',
+              'MaxEuclideanDistance', 'MaxPathDistance', 'MaxBranchOrder',
+              'AverageContraction', 'AverageFragmentation', 'AverageBifurcationAngleLocal',
+              'AverageBifurcationAngleRemote']
+    fnames = [f'{fn}_mean_mean' for fn in vis_features]
+    #fnames = __FEAT_NAMES__
+    
+    df = pd.read_csv(rmefeature_file, index_col=0).set_index('region_name_r316')
+    rcoords = pd.DataFrame(list(zip(range(len(fnames)), df.loc[region, fnames])), columns=['Region', 'feature'])
+    
+    
+    fs = list(zip(np.repeat(df.index.to_list(), df.shape[0]), 
+                fnames * df.shape[0], 
+                df.loc[:,fnames].to_numpy().reshape(-1)))
+    df_f = pd.DataFrame(data=fs, columns=['Region', 'feature_name', 'feature'])
+    #sns.violinplot(data=df_f, x='feature_name', y='feature')
+    sns.boxplot(data=df_f, x='feature_name', y='feature', showfliers=False)
+
+    sns.scatterplot(data=rcoords, x='Region', y='feature', marker='o', color='red', label=region)
+    plt.xticks(ticks=range(len(fnames)), labels=vis_features, rotation=90, fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.xlabel('')
+    plt.ylabel('mean-features', fontsize=18)
+    plt.ylim(-1.6, 1.6)
+    plt.legend(loc='upper left')
+    plt.tight_layout()
+    plt.savefig(f'{region}_feature_distr.png', dpi=300)
+    plt.close('all')
 
 

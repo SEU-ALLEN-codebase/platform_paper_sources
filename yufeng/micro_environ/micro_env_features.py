@@ -115,6 +115,34 @@ class MEFeatures:
         columns.extend([f'{fn}_std' for fn in __FEAT_ALL__])
         rmef = pd.DataFrame(output, index=index, columns=columns)
         rmef.to_csv(rmefeature_file, float_format='%g')
+
+    def calc_regional_single_features(self, mefeature_file, sfeature_file):
+        rkey = f'region_id_r{self.region_num}'
+        rnkey = f'region_name_r{self.region_num}'
+        mef = pd.read_csv(mefeature_file, index_col=0)
+        print(f'Feature shape: {mef.shape}')
+        # normalize
+        mef = mef[[rkey, rnkey, 'brain_structure', *__FEAT_NAMES__]]
+        temp = mef.loc[:, __FEAT_NAMES__]
+        mef.loc[:, __FEAT_NAMES__] = (temp - temp.mean()) / (temp.std() + 1e-10)
+
+        regions = np.unique(mef[rkey])
+        output = []
+        index = []
+        for region in regions:
+            region_index = mef.index[mef[rkey] == region]
+            feat = mef.loc[region_index, __FEAT_NAMES__]
+            rid = mef.loc[region_index[0], rkey]
+            rname = mef.loc[region_index[0], rnkey]
+            struct = mef.loc[region_index[0], 'brain_structure']
+            fmean = feat.mean().to_numpy().tolist()
+            index.append(rid)
+            output.append([rname, struct, len(region_index), *fmean])
+        
+        columns = [rnkey, 'brain_structure', 'NumRecons']
+        columns.extend(__FEAT_NAMES__)
+        rmef = pd.DataFrame(output, index=index, columns=columns)
+        rmef.to_csv(sfeature_file, float_format='%g')
             
         
 
@@ -126,4 +154,7 @@ if __name__ == '__main__':
     mef = MEFeatures(feature_file)
     #mef.calc_micro_env_features(mefeature_file, nodes_range=nodes_range)
     mef.calc_regional_mefeatures(mefeature_file, rmefeature_file)
+    
+    # temporal, for test only!
+    #mef.calc_regional_single_features(mefeature_file, f'non-environ_features_nodes{nodes_range[0]}-{nodes_range[1]}.csv')
         
