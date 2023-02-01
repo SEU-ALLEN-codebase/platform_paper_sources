@@ -156,7 +156,7 @@ if __name__ == '__main__':
     #swc_dir = '/PBshare/SEU-ALLEN/Users/ZhixiYun/SDJ_regi/R1741_final'
     swc_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/1741_All'
     out_dir = '../main_tracts_types'
-    ctype_file = '../../common_lib/41586_2021_3941_MOESM4_ESM.xlsx'
+    ctype_file = '../../common_lib/41586_2021_3941_MOESM4_ESM.csv'
     min_files = 10
     scale_factor = 25.0
   

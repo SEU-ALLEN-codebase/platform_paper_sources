@@ -17,9 +17,14 @@ import random
 from scipy.linalg import norm
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.gridspec as gridspec
+
 from sklearn.decomposition import PCA
 from sklearn.neighbors import KDTree
 from sklearn.cluster import KMeans
+
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+import matplotlib.font_manager as fm
 
 from swc_handler import parse_swc
 
@@ -48,6 +53,13 @@ def estimate_radius2d(pts, method=0):
         radius = np.max(lengths)
 
     return radius
+
+def convert_to_proj_name(class_name):
+    cn_split = class_name.split('-')
+    ptype = cn_split[0]
+    stype = '-'.join(cn_split[1:])
+    proj_name = f'{stype} --> {ptype}'
+    return proj_name
 
 
 def truncated_cone(ax, p0, p1, R0, R1, color, alpha=0.5):
@@ -93,7 +105,7 @@ def calc_best_viewpoint(pts):
     return elev, azim
 
 
-if False:
+if 1:
     def plot_main_tracts(class_name, key='tract.swc'):
         # visualize and check the path
         mpath_dir = '../main_tracts_types'
@@ -106,11 +118,13 @@ if False:
         fig = plt.figure(figsize=(8,8))
         ax = fig.add_subplot(111, projection='3d')
 
+
         # load all the main paths
         pts = []
         termini = []
         somata = []
-        for pathfile in glob.glob(os.path.join(mpath_dir, f'{class_name}*{key}'))[:show_instances]:
+        files = list(glob.glob(os.path.join(mpath_dir, f'{class_name}*{key}')))
+        for pathfile in files[:show_instances]:
             tree = parse_swc(pathfile)
             coords = np.array([node[2:5] for node in tree][::-1]) # soma to terminal
             coords /= scale
@@ -123,13 +137,10 @@ if False:
             somata.append(coords[0])
 
             # plot
-            ax.scatter(coords_sub[0,0], coords_sub[0,1], coords_sub[0,2], marker='o', color='r', s=40)
-            ax.scatter(coords_sub[-1,0], coords_sub[-1,1], coords_sub[-1,2], marker='^', color='k', s=40)
+            ax.scatter(coords_sub[0,0], coords_sub[0,1], coords_sub[0,2], marker='o', color='r', s=150)
+            ax.scatter(coords_sub[-1,0], coords_sub[-1,1], coords_sub[-1,2], marker='^', color='k', s=150)
             ax.plot(coords_sub[:,0], coords_sub[:,1], coords_sub[:,2], alpha=0.5)
-
-        # get the best view orientation
-        #elev, azim = calc_best_viewpoint(pts)
-        #ax.view_init(elev, azim)
+        pts = np.array(pts)
 
         if False:
             # plot the projection cone
@@ -140,32 +151,78 @@ if False:
             print(R)
             truncated_cone(ax, vertice, cone_b, 0, R, 'blue', alpha=0.2)
      
-        cn_split = class_name.split('-')
-        ptype = cn_split[0]
-        stype = '-'.join(cn_split[1:])
-        ax.set_title(f'{stype} --> {ptype}', fontsize=40, y=1.0)
+        fig.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, 
+            hspace = 0, wspace = 0)
+        ax.set_adjustable("box")
+        xmin, ymin, zmin = pts.min(axis=0)
+        xmax, ymax, zmax = pts.max(axis=0)
+        offset = 0.5
+        if class_name == 'TH_core-SMT':
+            offset = 0.4
+        elif class_name == 'CTX_IT-VISp':
+            offset = 0.8
+
+        if class_name.startswith('CTX_ET'):
+            best_proj = False
+        else:
+            best_proj = False
+
+        if best_proj:
+            # get the best view orientation
+            elev, azim = calc_best_viewpoint(pts)
+            ax.view_init(elev, azim)
+
+        # scalebar for better visualization when axis is of
+        fontprops = fm.FontProperties(size=35)
+        r = np.sqrt((xmax-xmin)**2 + (ymax-ymin)**2 + (zmax-zmin)**2)
+        l = 11.05 / r * 0.02    # 11.05 for CTX_ET-SSp-ul, estimated value
+        scalebar = AnchoredSizeBar(ax.transData,
+                           l, f'1mm', 'lower left', 
+                           pad=2,
+                           color='k',
+                           frameon=False,
+                           size_vertical=0.001,
+                           label_top=True,
+                           fontproperties=fontprops)
+        ax.add_artist(scalebar)
+
+        print(r)
+        ax.set_xlim(xmin+offset, xmax-offset)
+        ax.set_ylim(ymin+offset, ymax-offset)
+        ax.set_zlim(zmin+offset, zmax-offset)
+        
+        title = convert_to_proj_name(class_name)
+        ax.set_title(title, fontsize=50, y=1.0)
         tick_label_size = 18
-        ax.set_xlabel(r'X-coord ({}$\mu$m)'.format(scale), fontsize=tick_label_size)
-        ax.set_ylabel(r'Y-coord ({}$\mu$m)'.format(scale), fontsize=tick_label_size)
-        ax.set_zlabel(r'Z-coord ({}$\mu$m)'.format(scale), fontsize=tick_label_size)
-        ax.tick_params(axis='both', which='major', labelsize=tick_label_size)
+        #ax.set_xlabel(r'X-coord ({}$\mu$m)'.format(scale), fontsize=tick_label_size)
+        #ax.set_ylabel(r'Y-coord ({}$\mu$m)'.format(scale), fontsize=tick_label_size)
+        #ax.set_zlabel(r'Z-coord ({}$\mu$m)'.format(scale), fontsize=tick_label_size)
+        #ax.tick_params(axis='both', which='major', labelsize=tick_label_size)
+
+        ax.set_axis_off()
         #plt.legend()
-        plt.tight_layout()
+        #plt.tight_layout()
         plt.savefig(figname, dpi=200)
-        plt.close()
+        plt.close('all')
+
+        return len(files)
 
     ctypes = ['CP_GPe-CP', 'CP_SNr-CP', 'CTX_ET-MOp', 'CTX_ET-MOs', 'CTX_ET-RSPv', 'CTX_ET-SSp-bfd', 'CTX_ET-SSp-m', 'CTX_ET-SSp-n', 'CTX_ET-SSp-ul', 'CTX_ET-SSs', 'CTX_IT-MOp', 'CTX_IT-MOs', 'CTX_IT-SSp-bfd', 'CTX_IT-SSp-m', 'CTX_IT-SSp-n', 'CTX_IT-SSs', 'CTX_IT-VISp', 'TH_core-LGd', 'TH_core-MG', 'TH_core-SMT', 'TH_core-VPL', 'TH_core-VPLpc', 'TH_core-VPM', 'TH_matrix-LP', 'TH_matrix-VM']
     #ctypes = ['TH_matrix-LP']
     
+    n = 0
+    i = 0
     for class_name in ctypes:
         print(f'--> Plotting for {class_name}...')
-        plot_main_tracts(class_name)
+        n += plot_main_tracts(class_name)
+        i += 1
+    print(n, i)
 
 
-if 1:    # radius estimation along main tracts
+if 0:    # radius estimation along main tracts
     # params
-    mpath_dir = '../main_tracts_types'
-    #mpath_dir = '../CTX_ET-SSp-m-subclasses'
+    #mpath_dir = '../main_tracts_types'
+    mpath_dir = '../CTX_ET-SSp-m-subclasses'
     show_pts = 200
     show_instances = 200
 
@@ -256,66 +313,130 @@ if 1:    # radius estimation along main tracts
 
         return radii
 
-    def plot_tract_radii(class_name):
-        radii = calc_tract_radii1(class_name)
-
-        # plot
-        plt.plot(np.linspace(0, 1, len(radii)), radii)
-        plt.title(class_name, fontsize=18)
-        plt.xlabel('Normalized distance to soma', fontsize=15)
-        plt.ylabel(r'Radius of cross-section ($\mu$m)', fontsize=15)
-        plt.savefig(f'{class_name}_radii.png', dpi=150)
-        plt.close()
-
-        return radii
-
     def plot_tracts_radii(ctypes, figname, radius_type=2):
         scale = 1000
         fig = plt.figure(figsize=(8,8))
 
+        cn_map = {
+            '0_CTX_ET-SSp-m': 'C1',
+            '1_CTX_ET-SSp-m': 'C2',
+            '2_CTX_ET-SSp-m': 'C3',
+        }
         for class_name in ctypes:
             if radius_type == 1:
                 radii = np.array(calc_tract_radii1(class_name)) / scale
             else:
                 radii = np.array(calc_tract_radii2(class_name)) / scale
-            plt.plot(np.linspace(0, 1, len(radii)), radii, label=class_name, linewidth=2)
-        
-        plt.title(figname, fontsize=40)
-        plt.xticks([])
-        if radius_type == 1:
-            plt.yticks([0,1,2,3,4], fontsize=25)
-            plt.ylim([0,4])
-            plt.ylabel(r'Radius-method1 (1000$\mu$m)', fontsize=25)
-        else:
-            plt.yticks([0,1,2], fontsize=25)
-            plt.ylim([0,2])
-            plt.ylabel(r'Radius-method2 (1000$\mu$m)', fontsize=25)
 
-        plt.xlabel('Normalized distance to soma', fontsize=25)
-        plt.legend(loc='upper left', frameon=False)
-        #plt.grid(which='major', linestyle='--', alpha=0.5)
+            plt.plot(np.linspace(0, 1, len(radii)), radii, label=cn_map[class_name], linewidth=3)
+        
+        title = convert_to_proj_name(figname)
+        plt.title(title, fontsize=40, loc='center', y=1.0, pad=-40)
+        plt.xticks([])
+        
+        axis_label_size = 35
+        if radius_type == 1:
+            plt.yticks([0,1,2,3], fontsize=axis_label_size)
+            plt.ylim([0,3.5])
+            plt.ylabel(r'Radius (mm)', fontsize=axis_label_size)
+        else:
+            plt.yticks([0,1,2], fontsize=axis_label_size)
+            plt.ylim([0,2])
+            plt.ylabel(r'Radius (mm)', fontsize=axis_label_size)
+        plt.xlim([0,1])
+
+        plt.xlabel('Main tract', fontsize=axis_label_size)
+        plt.legend(loc='center left', frameon=False, fontsize=15)
         plt.gca().spines['right'].set_visible(False)
         plt.gca().spines['top'].set_visible(False)
         plt.gca().spines['left'].set_linewidth(3)
         plt.gca().spines['bottom'].set_linewidth(3)
+        plt.gca().spines['left'].set_alpha(.7)
+        plt.gca().spines['bottom'].set_alpha(.7)
 
         plt.tight_layout()
-        plt.savefig(f'{figname}_radii.png', dpi=200)
+        plt.savefig(f'{figname}_radii.png', dpi=300)
         plt.close()
 
+    def plot_tracts_radii_all(type_dict, figname, radius_type=2):
+        scale = 1000
+        fig = plt.figure(figsize=(8,12))
+        gs = fig.add_gridspec(6, 4, 
+                      left=0.1, right=0.98, bottom=0.05, top=0.98,
+                      wspace=0.05, hspace=0.05,
+                        )
+
+        cls_list = ['CP', 'CTX_ET', 'CTX_IT', 'TH_core', 'TH_matrix']
+        axis_label_size = 20
+        ytick_size = 20
+        xlabel = 'Main tract'
+        ylabel = 'Radius (mm)'
+        for cls in cls_list:
+            if cls == 'CP':
+                ax = fig.add_subplot(gs[:2,1:3])
+                ax.set_ylabel(ylabel, fontsize=axis_label_size)
+                ax.set_yticks([0,1,2,3])
+                ax.tick_params(axis='y', which='major', labelsize=ytick_size)
+            elif cls == 'CTX_ET':
+                ax = fig.add_subplot(gs[2:4,:2])
+                ax.set_ylabel(ylabel, fontsize=axis_label_size)
+                ax.set_yticks([0,1,2,3])
+                ax.tick_params(axis='y', which='major', labelsize=ytick_size)
+            elif cls == 'CTX_IT':
+                ax = fig.add_subplot(gs[2:4,2:4])
+                ax.set_yticks([])
+            elif cls == 'TH_core':
+                ax = fig.add_subplot(gs[4:6,:2])
+                ax.set_xlabel(xlabel, fontsize=axis_label_size)
+                ax.set_ylabel(ylabel, fontsize=axis_label_size)
+                ax.set_yticks([0,1,2,3])
+                ax.tick_params(axis='y', which='major', labelsize=ytick_size)
+            elif cls == 'TH_matrix':
+                ax = fig.add_subplot(gs[4:6,2:4])
+                ax.set_yticks([])
+                ax.set_xlabel(xlabel, fontsize=axis_label_size)
+
+            for class_name in type_dict[cls]:
+                if radius_type == 1:
+                    radii = np.array(calc_tract_radii1(class_name)) / scale
+                else:
+                    radii = np.array(calc_tract_radii2(class_name)) / scale
+
+                cname = '-'.join(class_name.split('-')[1:])
+                if cname == 'CP':
+                    cname = class_name.split('-')[0]
+                ax.plot(np.linspace(0, 1, len(radii)), radii, label=cname, linewidth=2)
+                ax.legend(loc=2, frameon=False, fontsize=12)
+
+            ax.set_xlim([0,1])
+            ax.set_xticks([])
+            ax.set_ylim([0,3.5])
+            ax.spines.right.set_visible(False)
+            ax.spines.top.set_visible(False)
+            ax.spines['left'].set_linewidth(3)
+            ax.spines['left'].set_alpha(0.3)
+            ax.spines['bottom'].set_linewidth(3)
+            ax.spines['bottom'].set_alpha(0.3)
+            ax.set_title(cls, loc='center', y=1.0, pad=-25, fontsize=25)
+        
+        #plt.suptitle(figname, fontsize=30)
+
+        plt.savefig(f'{figname}_radii.png', dpi=600)
+        plt.close()
+    
 
     # calculating
-    type_dict = {
-        'CP': ['CP_GPe-CP', 'CP_SNr-CP'],
-        'CTX_ET': ['CTX_ET-MOp', 'CTX_ET-MOs', 'CTX_ET-RSPv', 'CTX_ET-SSp-bfd', 'CTX_ET-SSp-m', 'CTX_ET-SSp-n', 'CTX_ET-SSp-ul', 'CTX_ET-SSs'],
-        'CTX_IT': ['CTX_IT-MOp', 'CTX_IT-MOs', 'CTX_IT-SSp-bfd', 'CTX_IT-SSp-m', 'CTX_IT-SSp-n', 'CTX_IT-SSs', 'CTX_IT-VISp'],
-        'TH_core': ['TH_core-LGd', 'TH_core-MG', 'TH_core-SMT', 'TH_core-VPL', 'TH_core-VPLpc', 'TH_core-VPM'],
-        'TH_matrix': ['TH_matrix-LP', 'TH_matrix-VM']
-    }
-    #type_dict = {'CTX_ET-SSp-m': ['0_CTX_ET-SSp-m', '1_CTX_ET-SSp-m', '2_CTX_ET-SSp-m']}
+    #type_dict = {
+    #    'CP': ['CP_GPe-CP', 'CP_SNr-CP'],
+    #    'CTX_ET': ['CTX_ET-MOp', 'CTX_ET-MOs', 'CTX_ET-RSPv', 'CTX_ET-SSp-bfd', 'CTX_ET-SSp-m', 'CTX_ET-SSp-n', 'CTX_ET-SSp-ul', 'CTX_ET-SSs'],
+    #    'CTX_IT': ['CTX_IT-MOp', 'CTX_IT-MOs', 'CTX_IT-SSp-bfd', 'CTX_IT-SSp-m', 'CTX_IT-SSp-n', 'CTX_IT-SSs', 'CTX_IT-VISp'],
+    #    'TH_core': ['TH_core-LGd', 'TH_core-MG', 'TH_core-SMT', 'TH_core-VPL', 'TH_core-VPLpc', 'TH_core-VPM'],
+    #    'TH_matrix': ['TH_matrix-LP', 'TH_matrix-VM']
+    #}
+    type_dict = {'CTX_ET-SSp-m': ['0_CTX_ET-SSp-m', '1_CTX_ET-SSp-m', '2_CTX_ET-SSp-m']}
 
-    for cls_name, ctypes in type_dict.items():
-        plot_tracts_radii(ctypes, cls_name, radius_type=1)
+    #plot_tracts_radii_all(type_dict, 'all', radius_type=1)
+    plot_tracts_radii(type_dict['CTX_ET-SSp-m'], 'CTX_ET-SSp-m', radius_type=1)
  
 
 if 0:    # clustering and divide neurons into sub-types
@@ -323,6 +444,7 @@ if 0:    # clustering and divide neurons into sub-types
     # params
     mpath_dir = '../main_tracts_types'
     show_instances = 200
+    scale = 1000
 
     def plot_CTX_ET_neurons(class_name):
         pathfiles = list(glob.glob(os.path.join(mpath_dir, f'{class_name}*_tract.swc')))
@@ -332,12 +454,14 @@ if 0:    # clustering and divide neurons into sub-types
 
         fig = plt.figure(figsize=(8,8))
         ax = fig.add_subplot(111, projection='3d')
+        fig.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0,
+            hspace = 0, wspace = 0)
 
         pts = []
         for pathfile in pathfiles:
             tree = parse_swc(pathfile)
             pts.append(tree[0][2:5])
-        pts = np.array(pts)
+        pts = np.array(pts) / scale
 
         # clustering according to terminal points
         kmeans = KMeans(3).fit(pts)
@@ -349,7 +473,23 @@ if 0:    # clustering and divide neurons into sub-types
         
         for i, c in zip(range(3), ['r', 'g', 'b']):
             pts_ = pts[labels == i]
-            ax.scatter(pts_[:,0], pts_[:,1], pts_[:,2], marker='^', color=c)
+            ax.scatter(pts_[:,0], pts_[:,1], pts_[:,2], marker='^', color=c, s=200)
+
+        ax.set_adjustable("box")
+        xmin, ymin, zmin = pts.min(axis=0)
+        xmax, ymax, zmax = pts.max(axis=0)
+        offset = 0.2
+        ax.set_xlim(xmin+offset, xmax-offset)
+        ax.set_ylim(ymin+offset, ymax-offset)
+        ax.set_zlim(zmin+offset, zmax-offset)
+
+        label_size = 25
+        ax.set_xlabel('X (mm)', fontsize=label_size)
+        ax.set_ylabel('Y (mm)', fontsize=label_size)
+        ax.set_zlabel('Z (mm)', fontsize=label_size)
+
+        ax.tick_params(axis='both', which='minor', labelsize=label_size)
+
         plt.savefig(f'{class_name}.png', dpi=200)
         plt.close()
 

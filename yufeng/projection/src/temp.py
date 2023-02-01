@@ -3,68 +3,100 @@
 #================================================================
 #   Copyright (C) 2022 Yufeng Liu (Braintell, Southeast University). All rights reserved.
 #   
-#   Filename     : temp.py
+#   Filename     : valid.py
 #   Author       : Yufeng Liu
-#   Date         : 2022-08-29
+#   Date         : 2022-08-06
 #   Description  : 
 #
 #================================================================
 
+import os
+import glob
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D
+import random
 from scipy.linalg import norm
-import pylab as plt
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.gridspec as gridspec
 
-fig = plt.figure()
-ax = fig.add_subplot(1, 1, 1, projection='3d')
+from sklearn.decomposition import PCA
+from sklearn.neighbors import KDTree
+from sklearn.cluster import KMeans
 
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+import matplotlib.font_manager as fm
 
-def truncated_cone(p0, p1, R0, R1, color):
-    """
-    adapted from https://stackoverflow.com/questions/48703275/3d-truncated-cone-in-python
-    """
-    # vector in direction of axis
-    v = p1 - p0
-    # find magnitude of vector
-    mag = norm(v)
-    # unit vector in direction of axis
-    v = v / mag
-    # make some vector not in the same direction as v
-    not_v = np.array([1, 1, 0])
-    if (v == not_v).all():
-        not_v = np.array([0, 1, 0])
-    # make vector perpendicular to v
-    n1 = np.cross(v, not_v)
-    # print n1,'\t',norm(n1)
-    # normalize n1
-    n1 /= norm(n1)
-    # make unit vector perpendicular to v and n1
-    n2 = np.cross(v, n1)
-    # surface ranges over t from 0 to length of axis and 0 to 2*pi
-    n = 80
-    t = np.linspace(0, mag, n)
-    theta = np.linspace(0, 2 * np.pi, n)
-    # use meshgrid to make 2d arrays
-    t, theta = np.meshgrid(t, theta)
-    R = np.linspace(R0, R1, n)
-    # generate coordinates for surface
-    X, Y, Z = [p0[i] + v[i] * t + R *
-               np.sin(theta) * n1[i] + R * np.cos(theta) * n2[i] for i in [0, 1, 2]]
-    ax.plot_surface(X, Y, Z, color=color, linewidth=0, antialiased=False, alpha=0.5)
+from swc_handler import parse_swc
 
 
-A0 = np.array([1, 3, 2])
-A1 = np.array([8, 5, 9])
-ax.set_xlim(0, 10)
-ax.set_ylim(0, 10)
-ax.set_zlim(0, 10)
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.set_zlabel('z')
-truncated_cone(A0, A1, 0, 5, 'blue')
-ax.scatter(A0[0], A0[1], A0[2], marker='o', color='r')
-ax.scatter(A1[0], A1[1], A1[2], marker='^', color='g')
-plt.savefig('temp.png')
+def calc_best_viewpoint(pts):
+    pca = PCA()
+    pca.fit(pts)
+    x,y,z = pca.components_[2]
+    elev = np.rad2deg(np.arcsin(z))
+    azim = np.rad2deg(np.arctan(x/y))
+    return elev, azim
 
+def plot_main_tracts(class_name, key='tract.swc'):
+    # visualize and check the path
+    show_pts = 200
+    figname = f'{class_name}_main_tract_vis.png'
+    scale = 1000
+
+    # intitalize the fig
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+
+    # load all the main paths
+    pts = []
+    termini = []
+    somata = []
+    files = ['../main_tracts_types/CP_GPe-CP_18455_00012_axonal_tract.swc']
+    for pathfile in files:
+        tree = parse_swc(pathfile)
+        coords = np.array([node[2:5] for node in tree][::-1]) # soma to terminal
+        coords /= scale
+
+        nnodes = len(coords)
+        step = max(nnodes // show_pts, 1)
+        coords_sub = coords[::step]
+        pts.extend(coords)
+        termini.append(coords[-1])
+        somata.append(coords[0])
+
+        # plot
+        ax.scatter(coords_sub[0,0], coords_sub[0,1], coords_sub[0,2], marker='o', color='b', s=200)
+        #ax.scatter(coords_sub[-1,0], coords_sub[-1,1], coords_sub[-1,2], marker='^', color='k', s=150)
+        ax.plot(coords_sub[:,0], coords_sub[:,1], coords_sub[:,2], color='red', lw=5, alpha=1)
+    pts = np.array(pts)
+
+    fig.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, 
+        hspace = 0, wspace = 0)
+    ax.set_adjustable("box")
+    xmin, ymin, zmin = pts.min(axis=0)
+    xmax, ymax, zmax = pts.max(axis=0)
+    offset = 0.
+
+    ax.set_xlim(xmin+offset, xmax-offset)
+    ax.set_ylim(ymin+offset, ymax-offset)
+    ax.set_zlim(zmin+offset, zmax-offset)
+
+    elev, azim = calc_best_viewpoint(pts)
+    print(elev, azim)
+    elev, azim = 90, 20
+    ax.view_init(elev, azim)
+    
+    tick_label_size = 18
+
+    ax.set_axis_off()
+    plt.tight_layout()
+    plt.savefig(figname, dpi=200)
+    plt.close('all')
+
+    return len(files)
+
+ctypes = ['CP_GPe-CP']
+plot_main_tracts(ctypes[0])
 
 
