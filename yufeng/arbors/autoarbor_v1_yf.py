@@ -142,7 +142,11 @@ def aarbor_adaptive_spectral_swc(filename, min_my_n_clusters, max_my_n_clusters)
     my_labels = 0;
     
     for n in range(min_my_n_clusters, max_my_n_clusters+1):
-        v = s_clustering(XS, Y, n)
+        try:
+            v = s_clustering(XS, Y, n)
+        except:
+            return 
+
         cur_score = v[0]
         cur_labels = v[1]
         print([n, cur_score])

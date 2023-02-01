@@ -812,11 +812,12 @@ def plot_ptypes_features_dendrite(fdicts, p2stypes, neurite_type='dendrite', plo
 
 if __name__ == '__main__':
     #celltype_file = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/seu_mouse/swc/1741_Celltype.csv'
-    celltype_file = '../../common_lib/41586_2021_3941_MOESM4_ESM.xlsx'
+    celltype_file = '../../common_lib/41586_2021_3941_MOESM4_ESM.csv'
     neurite_type = 'axonal'
 
     arbor_dir_dict = {
-        'axonal': '../data/axon_arbors_round2_ln',
+        #'axonal': '../data/axon_arbors_round2_ln',
+        'axonal': '../data/axon_arbors_l2',
         'basal': '../data/basal_den_sort',
         'apical': '../data/apical_den_sort',
         'dendrite': ['../data/basal_den_sort', '../data/apical_den_sort']
@@ -826,7 +827,7 @@ if __name__ == '__main__':
     soma_type_merge = True
     use_abstract_ptype = True
     min_num_neurons = 10
-    out_dir = f'min_num_neurons{min_num_neurons}'
+    out_dir = f'min_num_neurons{min_num_neurons}_l2'
     
     arbor_dir = arbor_dir_dict[neurite_type]
     
@@ -840,7 +841,7 @@ if __name__ == '__main__':
     spos_dict = load_soma_pos(soma_file)
     print(p2stypes)
  
-    if 0:
+    if 1:
         if neurite_type == 'axonal':
             fdict = calc_axon_features(soma_types, arbor_dir, spos_dict, min_num_neurons=min_num_neurons, median=False, neurite_type=neurite_type)
         elif neurite_type == 'basal' or neurite_type == 'apical':
@@ -851,7 +852,7 @@ if __name__ == '__main__':
             pickle.dump(fdict, fp)
     
  
-    if 1:   
+    if 0:   
         with open(feat_file, 'rb') as fp:
             fdict = pickle.load(fp)
         for plot_value in ['mean', 'std']:
