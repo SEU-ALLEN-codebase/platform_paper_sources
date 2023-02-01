@@ -1,0 +1,262 @@
+#!/usr/bin/env python
+
+#================================================================
+#   Copyright (C) 2022 Yufeng Liu (Braintell, Southeast University). All rights reserved.
+#   
+#   Filename     : common_utils.py
+#   Author       : Yufeng Liu
+#   Date         : 2022-09-12
+#   Description  : 
+#
+#================================================================
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+
+stype2struct = {
+    'AId': 'CTX',
+    'MOs': 'CTX',
+    'MOp': 'CTX',
+    'CLA': 'CTX',
+    'SSs': 'CTX',
+    'VISp': 'CTX',
+    'RSPv': 'CTX',
+    'CP': 'CNU',
+    'VPL': 'BS',
+    'MG': 'BS',
+    'VPM': 'BS',
+    'LGd': 'BS',
+    'LD': 'BS',
+    'LP': 'BS',
+    'SSp-m': 'CTX',
+    'SSp-ll': 'CTX',
+    'SSp-bfd': 'CTX',
+    'VPLpc': 'BS',
+    'SMT': 'BS',
+    'SSp-n': 'CTX',
+    'SSp-un': 'CTX',
+    'SSp-ul': 'CTX',
+    'VM': 'BS',
+    'OT': 'CNU',
+    'ACB': 'CNU',
+    'RT': 'BS',
+    'VISrl': 'CTX'
+}
+
+def load_celltypes(celltype_file, column_name='Subclass_or_type', soma_type_merge=True):
+    data = pd.read_csv(celltype_file)
+    ptypes = data['Subclass_or_type']
+    stypes = data['Soma_region']
+
+    is_soma_type = column_name == 'Soma_region'
+    if is_soma_type:
+        ctypes = stypes
+    else:
+        ctypes = ptypes
+
+    prefixs = data['Name']
+    ctype_dict = {}
+    if is_soma_type and (not soma_type_merge):
+        for name, ptype, ctype in zip(prefixs, ptypes, ctypes):
+            if ctype is np.nan or ptype is np.nan:
+                continue
+            key = f'{ptype}-{ctype}'
+            if key not in ctype_dict:
+                ctype_dict[key] = [name]
+            else:
+                ctype_dict[key].append(name)
+    else:
+        for name, ctype in zip(prefixs, ctypes):
+            if ctype is np.nan:
+                continue
+            if ctype not in ctype_dict:
+                ctype_dict[ctype] = [name]
+            else:
+                ctype_dict[ctype].append(name)
+
+    rev_dict = {}
+    for key, value in ctype_dict.items():
+        for v in value:
+            rev_dict[v] = key
+
+    # load correspondence between different cell type level
+    p2stypes = {}
+    for ptype, stype in zip(ptypes, stypes):
+        if ptype is np.nan or stype is np.nan:
+            continue
+        if ptype not in p2stypes:
+            p2stypes[ptype] = set([stype])
+        else:
+            p2stypes[ptype].add(stype)
+        
+    return ctype_dict, rev_dict, p2stypes
+
+def load_type_from_excel(celltype_file, column_name='Manually_corrected_soma_region', use_abstract_ptype=False, keep_Car3=False):
+    if celltype_file.endswith('xslx'):
+        data = pd.read_excel(celltype_file, skiprows=1)
+    elif celltype_file.endswith('csv'):
+        data = pd.read_csv(celltype_file, index_col=0)
+    ctypes = data[column_name]
+
+    prefixs = data['Cell name']
+    ctype_dict = {}
+    for name, ctype in zip(prefixs, ctypes):
+        if ctype is np.nan:
+            continue
+        if ctype not in ctype_dict:
+            ctype_dict[ctype] = [name]
+        else:
+            ctype_dict[ctype].append(name)
+
+    rev_dict = {}
+    for key, value in ctype_dict.items():
+        for v in value:
+            rev_dict[v] = key
+
+    # load correspondence between different cell type level
+    stypes = data['Manually_corrected_soma_region']
+    ptypes = data['Subclass_or_type']
+    if use_abstract_ptype:
+        nptypes = []
+        for i in range(len(ptypes)):
+            ptname = ptypes[i]
+            if ptname is np.nan:
+                nptypes.append(np.nan)
+                continue
+            if not keep_Car3 and ptname == 'Car3':
+                nptypes.append(np.nan)
+                continue
+
+            nptypes.append(ptname.split('_')[0])
+        ptypes = nptypes
+
+    p2stypes = {}
+    for ptype, stype in zip(ptypes, stypes):
+        if ptype is np.nan or stype is np.nan:
+            continue
+        if ptype not in p2stypes:
+            p2stypes[ptype] = set([stype])
+        else:
+            p2stypes[ptype].add(stype)
+       
+    return ctype_dict, rev_dict, p2stypes
+
+
+def load_pstype_from_excel(celltype_file, sname='Manually_corrected_soma_region', pname='Subclass_or_type', use_abstract_ptype=False, keep_Car3=False):
+    if celltype_file.endswith('xslx'):
+        data = pd.read_excel(celltype_file, skiprows=1)
+    elif celltype_file.endswith('csv'):
+        data = pd.read_csv(celltype_file, index_col=0)
+    stypes = data[sname]
+    ptypes = data[pname]
+    if use_abstract_ptype:
+        nptypes = []
+        for i in range(len(ptypes)):
+            ptname = ptypes[i]
+            if ptname is np.nan:
+                nptypes.append(np.nan)
+                continue
+            if not keep_Car3 and ptname == 'Car3':
+                nptypes.append(np.nan)
+                continue
+            nptypes.append(ptname.split('_')[0])
+        ptypes = nptypes
+
+    prefixs = data['Cell name']
+    ctype_dict = {}
+    for name, ptype, stype in zip(prefixs, ptypes, stypes):
+        if stype is np.nan or ptype is np.nan:
+            continue
+        key = f'{ptype}-{stype}'
+        if key not in ctype_dict:
+            ctype_dict[key] = [name]
+        else:
+            ctype_dict[key].append(name)
+
+    rev_dict = {}
+    for key, value in ctype_dict.items():
+        for v in value:
+            rev_dict[v] = key
+
+    # load correspondence between different cell type level
+    p2stypes = {}
+    for ptype, stype in zip(ptypes, stypes):
+        if ptype is np.nan or stype is np.nan:
+            continue
+        if ptype not in p2stypes:
+            p2stypes[ptype] = set([stype])
+        else:
+            p2stypes[ptype].add(stype)
+       
+    return ctype_dict, rev_dict, p2stypes
+
+def get_structures_from_regions(region_ids, ana_dict, struct_dict=None, return_name=True):
+    if struct_dict is None:
+        struct_dict = {
+            688: 'CTX',
+            623: 'CNU',
+            512: 'CB',
+            343: 'BS'
+        }
+    structures = []
+    for idx in region_ids:
+        id_path = ana_dict[idx]['structure_id_path']
+        for pid in id_path:
+            if pid in struct_dict:
+                if return_name:
+                    structures.append(struct_dict[pid])
+                else:
+                    structures.append(pid)
+                break
+        else:
+            structures.append(np.NaN)
+    return np.array(structures)
+
+def plot_sd_matrix(brain_structures, corr_raw, figname, title, annot=True):
+    brain_structures = np.array(brain_structures)
+    fig, ax_sd = plt.subplots(figsize=(6,6))
+    structs = np.unique(brain_structures)
+    nstructs = len(structs)
+    sd_matrix = np.zeros((nstructs, nstructs))
+    print(sd_matrix.shape, corr_raw.shape)
+    for i in range(nstructs):
+        struct1 = corr_raw.index[brain_structures == structs[i]]
+        for j in range(i, nstructs):
+            struct2 = corr_raw.index[brain_structures == structs[j]]
+            cc = corr_raw.loc[struct1, struct2].values.mean()
+            sd_matrix[i][j] = cc
+            sd_matrix[j][i] = cc
+    sd_matrix = np.round(sd_matrix, 2)
+    df_sd = pd.DataFrame(sd_matrix, columns=structs, index=structs)
+    sd_self = np.diag(df_sd).mean()
+    sd_inter = df_sd.to_numpy()[np.triu_indices_from(df_sd, k=1)].mean()
+    sd_diff = sd_self - sd_inter
+    print(f'Mean SD for self, inter and diff are: {sd_self:.3f}, {sd_inter:.3f} and {sd_diff:.3f}')
+
+    if nstructs < 3:
+        fs0 = 25
+        fs1 = 18
+        fs2 = 25
+    elif nstructs > 10:
+        fs0 = 8
+        fs1 = 12
+        fs2 = 14
+    else:
+        fs0 = 10
+        fs1 = 15
+        fs2 = 28
+
+    sns.heatmap(data=df_sd, ax=ax_sd, cmap='coolwarm', annot=annot,
+                annot_kws={"size": fs0}, cbar=False, vmin=-0.5, vmax=0.9)
+    #ax_sd.set_title(title, fontsize=30)
+    ax_sd.set_xlabel('', fontdict={'fontsize': fs1})
+    ax_sd.set_ylabel('', fontdict={'fontsize': fs1})
+    plt.setp(ax_sd.xaxis.get_majorticklabels(), fontsize=fs2)
+    plt.setp(ax_sd.yaxis.get_majorticklabels(), fontsize=fs2)
+    plt.tight_layout()
+    plt.savefig(figname, dpi=300)
+    plt.close('all')
+
+
