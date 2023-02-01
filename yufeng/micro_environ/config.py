@@ -9,6 +9,10 @@
 #   Description  : 
 #
 #================================================================
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 
 __FEAT_NAMES__ = [
     'Nodes', 'SomaSurface', 'Stems', 'Bifurcations',
@@ -18,6 +22,7 @@ __FEAT_NAMES__ = [
     'AverageContraction', 'AverageFragmentation',
     'AverageParent-daughterRatio', 'AverageBifurcationAngleLocal',
     'AverageBifurcationAngleRemote', 'HausdorffDimension']
+
 __FEAT_ALL__ = [
     'Nodes_mean', 'SomaSurface_mean', 'Stems_mean', 'Bifurcations_mean',
     'Branches_mean', 'Tips_mean', 'OverallWidth_mean', 'OverallHeight_mean',
@@ -41,4 +46,5 @@ __FEAT_ALL__ = [
     'AverageParent-daughterRatio_std', 'AverageBifurcationAngleLocal_std',
     'AverageBifurcationAngleRemote_std', 'HausdorffDimension_std'
     ]
+
 

@@ -18,6 +18,9 @@ import matplotlib.pyplot as plt
 from scipy.spatial import distance_matrix
 
 from config import __FEAT_NAMES__, __FEAT_ALL__
+import sys
+sys.path.append('../../common_lib')
+from common_utils import plot_sd_matrix
 
 # Say, "the default sans-serif font is COMIC SANS"
 matplotlib.rcParams['font.sans-serif'] = "Arial"
@@ -61,30 +64,7 @@ if 0:
 
 
 # Heatmap & clustermap of whole-train correlation coefficients
-if 1:
-    def plot_sd_matrix(brain_structures, corr_raw, figname):
-        fig, ax_sd = plt.subplots(figsize=(6,6))
-        structs = np.unique(brain_structures)
-        nstructs = len(structs)
-        sd_matrix = np.zeros((nstructs, nstructs))
-        for i in range(nstructs):
-            struct1 = corr_raw.index[brain_structures == structs[i]]
-            for j in range(i, nstructs):
-                struct2 = corr_raw.index[brain_structures == structs[j]]
-                cc = corr_raw.loc[struct1, struct2].values.mean()
-                sd_matrix[i][j] = cc
-                sd_matrix[j][i] = cc
-        df_sd = pd.DataFrame(sd_matrix, columns=structs, index=structs)
-        sns.heatmap(data=df_sd, ax=ax_sd, cmap='coolwarm', annot=True, 
-                    annot_kws={"size": 25}, cbar=False)
-        ax_sd.set_title('SD matrix', fontsize=40)
-        ax_sd.set_xlabel('', fontdict={'fontsize': 18})
-        ax_sd.set_ylabel('', fontdict={'fontsize': 18})
-        plt.setp(ax_sd.xaxis.get_majorticklabels(), fontsize=25)
-        plt.setp(ax_sd.yaxis.get_majorticklabels(), fontsize=25)
-        plt.savefig(figname, dpi=300)
-        plt.close('all')
-
+if 0:
     def mean_clustermap(rmef_hm, figname='temp.png'):
         rmef_hm = rmef_hm.copy()
         brain_structures = rmef_hm.pop('brain_structure')
@@ -93,7 +73,6 @@ if 1:
         
         rmef_hm.reset_index(inplace=True, drop=True)
         corr = rmef_hm.corr()
-        corr_raw = corr.copy()
         corr[corr > 0.9] = 0.9
 
         lut = dict(zip(np.unique(brain_structures), "rbgy"))
@@ -129,9 +108,6 @@ if 1:
         plt.tight_layout()
         plt.savefig(figname, dpi=300)
         plt.close('all')
-
-        # quantitative estimation of diversity and stereotypy
-        plot_sd_matrix(brain_structures, corr_raw, f'{figname[:-4]}_sd.png')
 
         return tlabels
 
@@ -230,8 +206,11 @@ if 1:
         pdist = distance_matrix(df_c, df_c)
         pdist /= pdist.max()
         epdist = np.exp(-pdist)
+        epdist = epdist / epdist.sum() * epdist.shape[0]**2
         corr = epdist * corr
-        corr_raw = corr.copy()
+        corr[corr > 1.0] = 1.0
+        corr[corr < -1.0] = -1.0
+
         #corr[corr > 0.7] = 0.7
         #corr[corr < 0] = 0
 
@@ -266,7 +245,6 @@ if 1:
         plt.savefig(figname, dpi=300)
         plt.close('all')
 
-        plot_sd_matrix(brain_structures, corr_raw, f'{figname[:-4]}_sd.png')
 
 
         
@@ -292,6 +270,47 @@ if 1:
     plot_spatial_enhanced_corr(rmef_hm, center_file, figname=f'corr_clustermap_mean_nodes{nodes}_spatialEnhanced.png')
     orders = std_heatmap(rmef_hm_std, figname=f'corr_clustermap_std_nodes{nodes}.png', 
         defined_order=orders)
+
+if 1:
+    # DS matrix for Cortical regions
+    nodes = '500-1500'
+    mefeature_file = f'../data/micro_env_features_d66_nodes{nodes}.csv'
+    structure = 'CTX'
+    #regions = ['ACB', 'AId', 'CLA', 'MOp', 'MOs', 'RSPv', 'SSp-bfd', 'SSp-ll', 'SSp-m', 'SSp-n', 'SSp-ul', 'SSp-un', 'SSs', 'VISp', 'VISrl']
+    normalize = True
+    
+    df = pd.read_csv(mefeature_file, index_col=0)
+    df = df[(df['brain_structure'] == structure) & df['region_name_r316'].isin(regions)]
+    if normalize:
+        tmp = df.loc[:, __FEAT_ALL__]
+        df_feat = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
+    else:
+        df_feat = df[__FEAT_ALL__]
+    print(df_feat.mean().mean())
+    corr = df_feat.transpose().corr()
+    regions = df['region_name_r316']
+    plot_sd_matrix(regions, corr, 'sdmatrix_microenviron_CTX.png', '', annot=True)
+
+if 0:
+    #DS matrix for all
+    nodes = '500-1500'
+    mefeature_file = f'../data/micro_env_features_d66_nodes{nodes}_regional.csv'
+    regions = ['ACB', 'AId', 'CLA', 'CP', 'LD', 'LGd', 'LP', 'MG', 'MOp', 'MOs', 'OT', 'RSPv', 'RT', 'SMT', 'SSp-bfd', 'SSp-ll', 'SSp-m', 'SSp-n', 'SSp-ul', 'SSp-un', 'SSs', 'VISp', 'VISrl', 'VM', 'VPL', 'VPLpc', 'VPM']
+    normalize = True
+
+    df = pd.read_csv(mefeature_file, index_col=0)
+    df = df[df['region_name_r316'].isin(regions)]
+    # re-standarized
+    keys = [f'{fn}_mean' for fn in __FEAT_ALL__]
+    brain_structures = df['brain_structure']
+    df = df[keys]
+    if normalize:
+        tmp = df.loc[:, keys]
+        df.loc[:, keys] = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
+    corr = df.transpose().corr()
+    plot_sd_matrix(brain_structures, corr, 'sdmatrix_microenviron.png', '')
+
+
     
 # feature distribution 
 if 0:

@@ -66,6 +66,7 @@ class MEFeatures:
         print(df_mef.shape)
         t0 = time.time()
         for region in regions:
+            if region != 985: continue  # for test only!
             print(f'==> Processing region: {region}')
             # all neurons in current region
             region_mask = df[rkey] == region
@@ -76,6 +77,7 @@ class MEFeatures:
             indices_topk = np.argpartition(pdist, topk+1, axis=1)[:, :topk+1]
             # get all features at once
             mef_raw = self.df.loc[region_index, __FEAT_NAMES__].iloc[indices_topk.reshape(-1)].to_numpy().reshape(-1, topk+1, fdim)
+            import ipdb; ipdb.set_trace()
             mef_mean = mef_raw.mean(axis=1)
             mef_median = np.median(mef_raw, axis=1)
             mef_std = mef_raw.std(axis=1)
@@ -152,8 +154,8 @@ if __name__ == '__main__':
     mefeature_file = f'../data/micro_env_features_d66_nodes{nodes_range[0]}-{nodes_range[1]}.csv'
     rmefeature_file = f'{mefeature_file[:-4]}_regional.csv'
     mef = MEFeatures(feature_file)
-    #mef.calc_micro_env_features(mefeature_file, nodes_range=nodes_range)
-    mef.calc_regional_mefeatures(mefeature_file, rmefeature_file)
+    mef.calc_micro_env_features(mefeature_file, nodes_range=nodes_range)
+    #mef.calc_regional_mefeatures(mefeature_file, rmefeature_file)
     
     # temporal, for test only!
     #mef.calc_regional_single_features(mefeature_file, f'non-environ_features_nodes{nodes_range[0]}-{nodes_range[1]}.csv')
