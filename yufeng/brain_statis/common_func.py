@@ -37,12 +37,13 @@ def load_regions(level=0, remove_fiber_tracts=True):
 
     return rids_set
 
-def get_region_mapper(coarse_regions, fine_regions, ana_dict):
+def get_region_mapper(coarse_regions, fine_regions, ana_dict, reverse_mapper=False):
     """
     The item of regions is index in u32
     """
 
     rc_dict = {}
+    rrc_dict = {}
     for idx in fine_regions:
         if idx == 0:
             continue
@@ -54,10 +55,12 @@ def get_region_mapper(coarse_regions, fine_regions, ana_dict):
                     rc_dict[ip].append(idx)
                 else:
                     rc_dict[ip] = [idx]
+                rrc_dict[idx] = ip
 
                 found = True
                 break
-
+    if reverse_mapper:
+        return rc_dict, rrc_dict
     return rc_dict
 
     

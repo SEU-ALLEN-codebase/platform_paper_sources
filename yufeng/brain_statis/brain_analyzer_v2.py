@@ -11,6 +11,7 @@
 #================================================================
 import os
 import glob
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -28,6 +29,8 @@ from anatomy.anatomy_config import REGION671, MASK_CCF25_FILE
 from anatomy.anatomy_core import parse_id_map, parse_ana_tree, parse_regions316
 
 from common_func import load_regions, get_region_mapper
+sys.path.append('../common_lib')
+from common_utils import get_structures_from_regions, plot_sd_matrix
 
 def load_region_distr(distr_file, remove_zero=True):
     """
@@ -646,6 +649,20 @@ class BrainsSignalAnalyzer(object):
             cnames = corr[corr.sum() == 0].index.to_numpy().tolist()
             corr = corr.drop(cnames).drop(cnames, axis=1)
 
+            # plot sd matrix
+            #regions = ['ACB', 'AId', 'CLA', 'CP', 'LD', 'LGd', 'LP', 'MG', 'MOp', 'MOs', 'OT', 'RSPv', 'RT', 'SMT', 'SSp-bfd', 'SSp-ll', 'SSp-m', 'SSp-n', 'SSp-ul', 'SSp-un', 'SSs', 'VISp', 'VISrl', 'VM', 'VPL', 'VPLpc', 'VPM']
+            name2ids = {v: k for k, v in rmapper.items()}
+            rids = [name2ids[c] for c in corr.columns]
+            structures = np.array(get_structures_from_regions(rids, self.ana_dict))
+            # keep only the BS-CNU-CTX for comparison with other levels
+            #tmp = df_corr.loc[:, regions]
+            #import ipdb; ipdb.set_trace()
+            #df_sd = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
+            #corr_sd = df_sd.corr(min_periods=20)
+
+            indices = np.nonzero(structures != 'CB')[0]
+            plot_sd_matrix(structures[indices], corr.iloc[indices, indices], 'sdmatrix_signaling.png', '')
+
             print(corr.shape, corr.mean().mean(), corr.max().min(), corr.min().min())
             corr = corr.fillna(0)
             corr[corr > 0.8] = 0.8
@@ -701,7 +718,6 @@ if __name__ == '__main__':
     if 1:
         precomputed_signal = 'precomputed_distrs.csv'
         bssa.corr_clustermap(precomputed_signal)
-        #bssa.load_somata()
     
         
 
