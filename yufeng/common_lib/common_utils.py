@@ -23,26 +23,50 @@ stype2struct = {
     'SSs': 'CTX',
     'VISp': 'CTX',
     'RSPv': 'CTX',
-    'CP': 'CNU',
-    'VPL': 'BS',
-    'MG': 'BS',
-    'VPM': 'BS',
-    'LGd': 'BS',
-    'LD': 'BS',
-    'LP': 'BS',
+    'CP': 'STR',
+    'VPL': 'TH',
+    'MG': 'TH',
+    'VPM': 'TH',
+    'LGd': 'TH',
+    'LD': 'TH',
+    'LP': 'TH',
     'SSp-m': 'CTX',
     'SSp-ll': 'CTX',
     'SSp-bfd': 'CTX',
-    'VPLpc': 'BS',
-    'SMT': 'BS',
+    'VPLpc': 'TH',
+    'SMT': 'TH',
     'SSp-n': 'CTX',
     'SSp-un': 'CTX',
     'SSp-ul': 'CTX',
-    'VM': 'BS',
-    'OT': 'CNU',
-    'ACB': 'CNU',
-    'RT': 'BS',
+    'VM': 'TH',
+    'OT': 'STR',
+    'ACB': 'STR',
+    'RT': 'TH',
     'VISrl': 'CTX'
+}
+
+struct_dict = {
+    'CTX': ['AId', 'CLA', 'MOp', 'MOs', 'RSPv', 'SSp-bfd', 'SSp-ll', 'SSp-m', 
+            'SSp-n', 'SSp-ul', 'SSp-un', 'SSs', 'VISp', 'VISrl'],
+    'TH': ['LGd', 'MG', 'SMT', 'VPL', 'VPM', 'LD', 'LP', 'VM', 'RT'],
+    'STR': ['ACB', 'CP', 'OT']
+}
+
+CorticalLayers = [
+    'MOp-2/3', 'MOs-2/3', 'SSp-bfd-2/3', 'SSs-2/3', 'VISp-2/3', 'VISrl-2/3',
+    'SSp-bfd-4', 'SSp-m-4', 'SSp-n-4', 'SSs-4', 'VISp-4', 'MOp-5', 'MOs-5',
+    'RSPv-5', 'SSp-bfd-5', 'SSp-ll-5', 'SSp-m-5', 'SSp-n-5', 'SSp-ul-5',
+    'SSp-un-5', 'SSs-5', 'VISp-5', 'AId-6', 'SSs-6'
+]
+
+PstypesToShow = {
+    'CTX': ['AId-Car3', 'CLA-Car3', 'SSs-Car3', 'MOp-ET', 'MOs-ET', 'RSPv-ET', 
+            'SSp-bfd-ET', 'SSp-ll-ET', 'SSp-m-ET', 'SSp-n-ET', 'SSp-ul-ET', 
+            'SSp-un-ET', 'SSs-ET', 'MOp-IT', 'MOs-IT', 'SSp-bfd-IT', 'SSp-m-IT', 
+            'SSp-n-IT', 'SSp-ul-IT', 'SSs-IT', 'VISp-IT', 'VISrl-IT'],
+    'TH': ['LGd-core', 'MG-core', 'SMT-core', 'VPL-core', 'VPM-core', 'LD-matrix',
+           'LP-matrix', 'VM-matrix', 'RT'],
+    'STR': ['CP-GPe', 'CP-SNr', 'ACB', 'OT']
 }
 
 def load_celltypes(celltype_file, column_name='Subclass_or_type', soma_type_merge=True):
@@ -214,49 +238,69 @@ def get_structures_from_regions(region_ids, ana_dict, struct_dict=None, return_n
             structures.append(np.NaN)
     return np.array(structures)
 
-def plot_sd_matrix(brain_structures, corr_raw, figname, title, annot=True):
+def plot_sd_matrix(brain_structures, structs, corr_raw, figname, title, annot=True, vmin=-0.5, vmax=0.9):
+    
+    def plot_single_matrix(matrix, structs, figname, vmin, vmax, annot):
+        nstructs = len(structs)
+
+        matrix = np.round(matrix, 2)
+        df_sd = pd.DataFrame(matrix, columns=structs, index=structs)
+        df_sd.to_csv(f'corr_regionLevel_{figname}.csv', float_format='%.4f')
+
+        sd_self = np.diag(df_sd).mean()
+        sd_inter = df_sd.to_numpy()[np.triu_indices_from(df_sd, k=1)].mean()
+        sd_diff = sd_self - sd_inter
+        print(f'Mean SD for self, inter and diff are: {sd_self:.3f}, {sd_inter:.3f} and {sd_diff:.3f}')
+
+        if nstructs <=5:
+            fs0 = 25
+            fs1 = 18
+            fs2 = 25
+        elif nstructs > 10:
+            fs0 = 8
+            fs1 = 12
+            fs2 = 14
+        else:
+            fs0 = 10
+            fs1 = 16
+            fs2 = 17
+
+        fig, ax_sd = plt.subplots(figsize=(6,6))
+        sns.heatmap(data=df_sd, ax=ax_sd, cmap='coolwarm', annot=annot,
+                    annot_kws={"size": fs0}, cbar=False, vmin=vmin, vmax=vmax)
+        #ax_sd.set_title(title, fontsize=30)
+        ax_sd.set_xlabel('', fontdict={'fontsize': fs1})
+        ax_sd.set_ylabel('', fontdict={'fontsize': fs1})
+        plt.setp(ax_sd.xaxis.get_majorticklabels(), fontsize=fs2)
+        plt.setp(ax_sd.yaxis.get_majorticklabels(), fontsize=fs2)
+        plt.tight_layout()
+        plt.savefig(f'{figname}.png', dpi=300)
+        plt.close('all')
+
+
     brain_structures = np.array(brain_structures)
-    fig, ax_sd = plt.subplots(figsize=(6,6))
-    structs = np.unique(brain_structures)
+    #structs = np.unique(brain_structures)
     nstructs = len(structs)
     sd_matrix = np.zeros((nstructs, nstructs))
+    std_sd_matrix = sd_matrix.copy()
     print(sd_matrix.shape, corr_raw.shape)
     for i in range(nstructs):
         struct1 = corr_raw.index[brain_structures == structs[i]]
         for j in range(i, nstructs):
             struct2 = corr_raw.index[brain_structures == structs[j]]
             cc = corr_raw.loc[struct1, struct2].values.mean()
+            cc_std = corr_raw.loc[struct1, struct2].values.std()
             sd_matrix[i][j] = cc
             sd_matrix[j][i] = cc
-    sd_matrix = np.round(sd_matrix, 2)
-    df_sd = pd.DataFrame(sd_matrix, columns=structs, index=structs)
-    sd_self = np.diag(df_sd).mean()
-    sd_inter = df_sd.to_numpy()[np.triu_indices_from(df_sd, k=1)].mean()
-    sd_diff = sd_self - sd_inter
-    print(f'Mean SD for self, inter and diff are: {sd_self:.3f}, {sd_inter:.3f} and {sd_diff:.3f}')
+            std_sd_matrix[i][j] = cc_std
+            std_sd_matrix[j][i] = cc_std
 
-    if nstructs < 3:
-        fs0 = 25
-        fs1 = 18
-        fs2 = 25
-    elif nstructs > 10:
-        fs0 = 8
-        fs1 = 12
-        fs2 = 14
-    else:
-        fs0 = 10
-        fs1 = 15
-        fs2 = 28
+    corr = corr_raw.copy()
+    corr['type'] = brain_structures
+    corr.to_csv(f'corr_neuronLevel_{figname}.csv', float_format='%.4f')
+    
+    plot_single_matrix(sd_matrix, structs, figname, vmin, vmax, annot)
 
-    sns.heatmap(data=df_sd, ax=ax_sd, cmap='coolwarm', annot=annot,
-                annot_kws={"size": fs0}, cbar=False, vmin=-0.5, vmax=0.9)
-    #ax_sd.set_title(title, fontsize=30)
-    ax_sd.set_xlabel('', fontdict={'fontsize': fs1})
-    ax_sd.set_ylabel('', fontdict={'fontsize': fs1})
-    plt.setp(ax_sd.xaxis.get_majorticklabels(), fontsize=fs2)
-    plt.setp(ax_sd.yaxis.get_majorticklabels(), fontsize=fs2)
-    plt.tight_layout()
-    plt.savefig(figname, dpi=300)
-    plt.close('all')
+    
 
 
