@@ -308,7 +308,7 @@ def calc_basal_features(soma_types, arbor_dir, spos_dict, min_num_neurons=5, med
             continue
 
         for curr_features, fname in zip(all_features, fnames):
-            feat_names = list(curr_features.keys())
+            feat_names = [f'{fn}_{neurite_type}' for fn in curr_features.keys()]
             feat_values = list(curr_features.values())
             features_all.append([fname, stype, *feat_values])
     
@@ -357,7 +357,8 @@ def calc_axon_features(soma_types, arbor_dir, spos_dict, min_num_neurons=5, medi
             continue
 
         for curr_features, fname in zip(all_features, fnames):
-            feat_names = list(curr_features[0].keys()) + list(curr_features[1].keys())
+            feat_names = [f'{fn}_axonal1' for fn in curr_features[0].keys()] + \
+                         [f'{fn}_axonal2' for fn in curr_features[1].keys()]
             feat_values = list(curr_features[0].values()) + list(curr_features[1].values())
             features_all.append([fname, stype, *feat_values])
     

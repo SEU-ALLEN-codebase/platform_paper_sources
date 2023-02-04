@@ -661,7 +661,7 @@ class BrainsSignalAnalyzer(object):
             #corr_sd = df_sd.corr(min_periods=20)
 
             indices = np.nonzero(structures != 'CB')[0]
-            plot_sd_matrix(structures[indices], corr.iloc[indices, indices], 'sdmatrix_signaling.png', '')
+            plot_sd_matrix(structures[indices], corr.iloc[indices, indices], 'sdmatrix_signaling', '')
 
             print(corr.shape, corr.mean().mean(), corr.max().min(), corr.min().min())
             corr = corr.fillna(0)

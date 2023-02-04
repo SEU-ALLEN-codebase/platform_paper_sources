@@ -271,46 +271,6 @@ if 0:
     orders = std_heatmap(rmef_hm_std, figname=f'corr_clustermap_std_nodes{nodes}.png', 
         defined_order=orders)
 
-if 1:
-    # DS matrix for Cortical regions
-    nodes = '500-1500'
-    mefeature_file = f'../data/micro_env_features_d66_nodes{nodes}.csv'
-    structure = 'CTX'
-    #regions = ['ACB', 'AId', 'CLA', 'MOp', 'MOs', 'RSPv', 'SSp-bfd', 'SSp-ll', 'SSp-m', 'SSp-n', 'SSp-ul', 'SSp-un', 'SSs', 'VISp', 'VISrl']
-    normalize = True
-    
-    df = pd.read_csv(mefeature_file, index_col=0)
-    df = df[(df['brain_structure'] == structure) & df['region_name_r316'].isin(regions)]
-    if normalize:
-        tmp = df.loc[:, __FEAT_ALL__]
-        df_feat = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
-    else:
-        df_feat = df[__FEAT_ALL__]
-    print(df_feat.mean().mean())
-    corr = df_feat.transpose().corr()
-    regions = df['region_name_r316']
-    plot_sd_matrix(regions, corr, 'sdmatrix_microenviron_CTX.png', '', annot=True)
-
-if 0:
-    #DS matrix for all
-    nodes = '500-1500'
-    mefeature_file = f'../data/micro_env_features_d66_nodes{nodes}_regional.csv'
-    regions = ['ACB', 'AId', 'CLA', 'CP', 'LD', 'LGd', 'LP', 'MG', 'MOp', 'MOs', 'OT', 'RSPv', 'RT', 'SMT', 'SSp-bfd', 'SSp-ll', 'SSp-m', 'SSp-n', 'SSp-ul', 'SSp-un', 'SSs', 'VISp', 'VISrl', 'VM', 'VPL', 'VPLpc', 'VPM']
-    normalize = True
-
-    df = pd.read_csv(mefeature_file, index_col=0)
-    df = df[df['region_name_r316'].isin(regions)]
-    # re-standarized
-    keys = [f'{fn}_mean' for fn in __FEAT_ALL__]
-    brain_structures = df['brain_structure']
-    df = df[keys]
-    if normalize:
-        tmp = df.loc[:, keys]
-        df.loc[:, keys] = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
-    corr = df.transpose().corr()
-    plot_sd_matrix(brain_structures, corr, 'sdmatrix_microenviron.png', '')
-
-
     
 # feature distribution 
 if 0:
