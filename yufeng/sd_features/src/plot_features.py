@@ -59,6 +59,8 @@ data_dir = '../data'
 use_std_feature = False
 vmin = -2
 vmax = 2
+do_prominence_estimation = True
+do_plot = True
 
 #colors = ['orangered', 'gold', 'medianblue', 'lime', 'magenta', 'brown']
 colors = ['b', 'r', 'k', 'm', 'c', 'g', 'y']
@@ -99,53 +101,98 @@ for ct in ['stype', 'ptype', 'cstype']:
         col_colors = ctypes.map(lut)
         ct_label = 's-type'
     elif ct == 'ptype':
-        ptypes = get_ptype_categories()
-        lut = dict(zip(np.unique(ptypes), sns.hls_palette(len(np.unique(ptypes)), l=0.5, s=0.8)))
-        col_colors = ptypes.map(lut)
+        ctypes = get_ptype_categories()
+        lut = dict(zip(np.unique(ctypes), sns.hls_palette(len(np.unique(ctypes)), l=0.5, s=0.8)))
+        col_colors = ctypes.map(lut)
         ct_label = 'p-type'
     elif ct == 'cstype':
-        cstypes = get_cstype_categories()
-        lut = dict(zip(np.unique(cstypes), sns.hls_palette(len(np.unique(cstypes)), l=0.5, s=0.8)))
-        col_colors = cstypes.map(lut)
+        ctypes = get_cstype_categories()
+        lut = dict(zip(np.unique(ctypes), sns.hls_palette(len(np.unique(ctypes)), l=0.5, s=0.8)))
+        col_colors = ctypes.map(lut)
         ct_label = 's-type-layer'
     else:
         raise ValueError
 
-    df_feats.clip(vmin, vmax, inplace=True)
-    print(row_colors.shape, col_colors.shape, df_feats.shape)
-    cm = sns.clustermap(df_feats, cmap='coolwarm', row_colors=row_colors, 
-                        col_colors=col_colors, row_cluster=False, 
-                        col_cluster=True, vmin=vmin, vmax=vmax,
-                        xticklabels=1, yticklabels=1, 
-                        figsize=(10,20))
-    # Move the row colors to right
-    #ax_row_colors = cm.ax_row_colors
-    #box_row_colors = ax_row_colors.get_position()
-    #box_heatmap = cm.ax_heatmap.get_position()
-    #ax_row_colors.set_position([box_heatmap.max[0], box_row_colors.y0, box_row_colors.width*1.5, box_row_colors.height])
+    #------------- The following section is for visualization -----------------#
+    if do_plot:
+        print('===> Plotting feature map')
+        df_feats.clip(vmin, vmax, inplace=True)
+        print(row_colors.shape, col_colors.shape, df_feats.shape)
+        g2 = sns.clustermap(df_feats, cmap='coolwarm', row_colors=row_colors, 
+                            col_colors=col_colors, row_cluster=False, 
+                            col_cluster=True, vmin=vmin, vmax=vmax,
+                            xticklabels=1, yticklabels=1, 
+                            figsize=(10,20))
+        # Move the row colors to right
+        #ax_row_colors = cm.ax_row_colors
+        #box_row_colors = ax_row_colors.get_position()
+        #box_heatmap = cm.ax_heatmap.get_position()
+        #ax_row_colors.set_position([box_heatmap.max[0], box_row_colors.y0, box_row_colors.width*1.5, box_row_colors.height])
 
-    # row legend
-    for label in rcolors_dict.keys():
-        cm.ax_row_dendrogram.bar(0, 0, color=rcolors_dict[label],
-                                label=label, linewidth=0)
-    cm.ax_row_dendrogram.legend(title='Level', loc="upper right", ncol=1, 
-                                bbox_to_anchor=(2., 1.28))
+        # row legend
+        for label in rcolors_dict.keys():
+            g2.ax_row_dendrogram.bar(0, 0, color=rcolors_dict[label],
+                                    label=label, linewidth=0)
+        g2.ax_row_dendrogram.legend(title='Level', loc="upper right", ncol=1, 
+                                    bbox_to_anchor=(2., 1.28))
 
-    # column legend
-    for label in lut.keys():
-        cm.ax_col_dendrogram.bar(0, 0, color=lut[label],
-                                label=label, linewidth=0)
-    cm.ax_col_dendrogram.legend(title=ct_label, loc="upper right", ncol=1, 
-                                bbox_to_anchor=(0.9, 0.9))
+        # column legend
+        for label in lut.keys():
+            g2.ax_col_dendrogram.bar(0, 0, color=lut[label],
+                                    label=label, linewidth=0)
+        g2.ax_col_dendrogram.legend(title=ct_label, loc="upper right", ncol=1, 
+                                    bbox_to_anchor=(0.9, 0.9))
 
-    # colorbar
-    cm.cax.set_position([0.9, .1, .03, .2])
-    cm.cax.set_ylabel('Standardized feature value')
-    cm.cax.set_yticks([-2,-1,0,1,2])
-    
-    plt.savefig(f'{ct}_featuremap.png')
-    plt.close('all')
-    
+        # colorbar
+        g2.cax.set_position([0.9, .1, .03, .2])
+        g2.cax.set_ylabel('Standardized feature value')
+        g2.cax.set_yticks([-2,-1,0,1,2])
+        
+        plt.savefig(f'{ct}_featuremap.png')
+        plt.close('all')
+ 
+
+
+    #------------- The following section is for data mining -------------------#
+    if do_plot and do_prominence_estimation:
+        print('==> Estimating prominance features')
+        # sort across the class-level
+        indices_x = np.argsort(df_feats, axis=1).to_numpy()
+        nfeatures, nclasses = indices_x.shape
+        orders_x = np.zeros(indices_x.shape)
+        for i in range(nfeatures):
+            orders_x[i][indices_x[i]] = range(nclasses)
+        orders_x = np.fabs(orders_x - (nclasses+1)/2.)
+        # sort across the feature-level
+        indices_y = np.argsort(orders_x, axis=0)
+        orders_y = np.zeros(indices_y.shape)
+        for i in range(nclasses):
+            orders_y[:,i][indices_y[:,i]] = range(nfeatures)
+            
+        df_orders = df_feats.copy()
+        df_orders.iloc[:,:] = orders_y
+        # visualization
+        #df_orders.clip(0, 10, inplace=True)  # show only the top10 
+        #df_prominence = 1 - df_orders / 10.
+        df_prominence = (df_orders - df_orders.shape[0] + 11) / 10.
+        df_prominence.clip(0, 1, inplace=True)
+
+        # reorder the columns to keep it the same as clustermap before
+        reordered_ind = g2.dendrogram_col.reordered_ind
+        df_prominence = df_prominence.iloc[:, reordered_ind]
+
+        g1 = sns.clustermap(df_prominence, cmap='OrRd', row_colors=row_colors,
+                            col_colors=col_colors, row_cluster=False,
+                            col_cluster=False, 
+                            xticklabels=1, yticklabels=1,
+                            figsize=(10,20))
+        # colorbar
+        g1.cax.set_position([0.9, .1, .03, .2])
+        g1.cax.set_ylabel('Feature prominence')
+        
+        plt.savefig(f'{ct}_prominence.png', dpi=300)
+        plt.close('all')
+
 
     
 
