@@ -21,7 +21,7 @@ class MEFeatures:
         self.region_num = region_num    # not the actual number of regions
         self.df = self.load_features(feature_file)
 
-    def load_features(self, feature_file, remove_nan=True, min_num_recons=20):
+    def load_features(self, feature_file, remove_nan=True, min_num_recons=10):
         df = pd.read_csv(feature_file, index_col=0)
         print(f'Initial number of recons: {df.shape[0]}')
         if remove_nan:
@@ -66,7 +66,7 @@ class MEFeatures:
         print(df_mef.shape)
         t0 = time.time()
         for region in regions:
-            if region != 985: continue  # for test only!
+            #if region != 985: continue  # for test only!
             print(f'==> Processing region: {region}')
             # all neurons in current region
             region_mask = df[rkey] == region
@@ -77,7 +77,6 @@ class MEFeatures:
             indices_topk = np.argpartition(pdist, topk+1, axis=1)[:, :topk+1]
             # get all features at once
             mef_raw = self.df.loc[region_index, __FEAT_NAMES__].iloc[indices_topk.reshape(-1)].to_numpy().reshape(-1, topk+1, fdim)
-            import ipdb; ipdb.set_trace()
             mef_mean = mef_raw.mean(axis=1)
             mef_median = np.median(mef_raw, axis=1)
             mef_std = mef_raw.std(axis=1)
@@ -150,8 +149,8 @@ class MEFeatures:
 
 if __name__ == '__main__':
     nodes_range = (500, 1500)
-    feature_file = '../data/lm_features_d22_all.csv'
-    mefeature_file = f'../data/micro_env_features_d66_nodes{nodes_range[0]}-{nodes_range[1]}.csv'
+    feature_file = '../data/lm_features_with_ptype_cstype.csv'
+    mefeature_file = f'../data/micro_env_features_nodes{nodes_range[0]}-{nodes_range[1]}_with_ptype_cstype.csv'
     rmefeature_file = f'{mefeature_file[:-4]}_regional.csv'
     mef = MEFeatures(feature_file)
     mef.calc_micro_env_features(mefeature_file, nodes_range=nodes_range)

@@ -15,34 +15,51 @@ import numpy as np
 import pandas as pd
 
 sys.path.append('../../common_lib')
-from common_utils import load_type_from_excel, stype2struct, plot_sd_matrix, struct_dict, CorticalLayers, PstypesToShow
+from common_utils import load_type_from_excel, stype2struct, plot_sd_matrix, struct_dict, CorticalLayers, PstypesToShow, normalize_features
 
 from config import __FEAT_NAMES__, __FEAT_ALL__
 
-__FEAT_MEAN__ = [f'{fn}_mean_mean' for fn in __FEAT_NAMES__]
-__FEAT_STD__ = [f'{fn}_mean_std' for fn in __FEAT_NAMES__]
-__FEAT_MEAN_STD__ = __FEAT_MEAN__ + __FEAT_STD__
+__FEAT_MEAN__ = [f'{fn}_mean' for fn in __FEAT_NAMES__]
+__FEAT_ALL__ = [f'{fn}_mean' for fn in __FEAT_NAMES__] + \
+               [f'{fn}_median' for fn in __FEAT_NAMES__] + \
+               [f'{fn}_std' for fn in __FEAT_NAMES__]
 
 def load_feature(feat_file):
     df = pd.read_csv(feat_file, index_col=1)
-    tmp = df[__FEAT_MEAN_STD__]
-    df.loc[:, __FEAT_MEAN_STD__] = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
+    # make sure they are normalized
+    #tmp = df[__FEAT_ALL__]
+    #df.loc[:, __FEAT_ALL__] = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
     return df
 
 def calc_regional_features(df, out_dir):
     # s-type regional mean features
     rn = 'region_name_r316'
     stypes = struct_dict['CTX'] + struct_dict['TH'] + struct_dict['STR']
-    mean_st = df[df.index.isin(stypes)][__FEAT_MEAN__]
-    std_st = df[df.index.isin(stypes)][__FEAT_STD__]
-    mean_st.rename(columns=lambda x: x.replace('mean_mean', 'mean'), inplace=True)
-    std_st.rename(columns=lambda x: x.replace('mean_std', 'std'), inplace=True)
+    df_st = df[df[rn].isin(stypes)][[rn, *__FEAT_MEAN__]]
+    mean_st = df_st.groupby(rn).mean().reindex(stypes)
+    std_st = df_st.groupby(rn).std().reindex(stypes)
     mean_st.to_csv(os.path.join(out_dir, 'stype_mean_features_microenviron.csv'))
     std_st.to_csv(os.path.join(out_dir, 'stype_std_features_microenviron.csv'))
 
+    # p-type features
+    ptypes = PstypesToShow['CTX'] + PstypesToShow['TH'] + PstypesToShow['STR']
+    df_pt = df[df.ptype.isin(ptypes)][['ptype', *__FEAT_MEAN__]]
+    mean_pt = df_pt.groupby('ptype').mean().reindex(ptypes)
+    std_pt = df_pt.groupby('ptype').std().reindex(ptypes)
+    mean_pt.to_csv(os.path.join(out_dir, 'ptype_mean_features_microenviron.csv'))
+    std_pt.to_csv(os.path.join(out_dir, 'ptype_std_features_microenviron.csv'))
+
+    # cortical layer for CTX
+    cstypes = CorticalLayers
+    df_cs = df[df.cstype.isin(cstypes)][['cstype', *__FEAT_MEAN__]]
+    mean_cs = df_cs.groupby('cstype').mean().reindex(cstypes)
+    std_cs = df_cs.groupby('cstype').std().reindex(cstypes)
+    mean_cs.to_csv(os.path.join(out_dir, 'cstype_mean_features_microenviron.csv'))
+    std_cs.to_csv(os.path.join(out_dir, 'cstype_std_features_microenviron.csv'))
+
 
 if __name__ == '__main__':
-    feat_file = '../data/micro_env_features_d66_nodes500-1500_regional.csv'
+    feat_file = '../data/micro_env_features_nodes500-1500_with_ptype_cstype.csv'
     out_dir = '/home/lyf/Research/cloud_paper/sd_features/data'
 
     df = load_feature(feat_file)
