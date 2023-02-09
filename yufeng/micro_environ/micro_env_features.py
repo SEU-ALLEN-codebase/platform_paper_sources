@@ -38,7 +38,8 @@ class MEFeatures:
 
         return df
 
-    def calc_micro_env_features(self, mefeature_file, topk=5, nodes_range=(500, 1500), min_num_recons=10):
+    def calc_micro_env_features(self, mefeature_file, topk=5, nodes_range=(500, 1500), 
+                                min_num_recons=10, remove_background=True):
         # filter out the regions with number of nodes out of range `nodes_range`
         nmin, nmax = nodes_range
         df = self.df[(self.df['Nodes'] >= nmin) & (self.df['Nodes'] <= nmax)]
@@ -85,9 +86,10 @@ class MEFeatures:
             df_mef.loc[region_index, __FEAT_ALL__] = mef
         print(f'--> Total time used: {time.time() - t0:.2f} sec')
 
-        # normalize by removing background
-        feats = df_mef.loc[:, __FEAT_ALL__]
-        df_mef.loc[:, __FEAT_ALL__] = (feats - feats.mean()) / (feats.std() + 1e-10)
+        if remove_background:
+            # normalize by removing background
+            feats = df_mef.loc[:, __FEAT_ALL__]
+            df_mef.loc[:, __FEAT_ALL__] = (feats - feats.mean()) / (feats.std() + 1e-10)
 
         df_mef.to_csv(mefeature_file, float_format='%g')
 
@@ -148,13 +150,22 @@ class MEFeatures:
         
 
 if __name__ == '__main__':
-    nodes_range = (500, 1500)
-    feature_file = '../data/lm_features_with_ptype_cstype.csv'
-    mefeature_file = f'../data/micro_env_features_nodes{nodes_range[0]}-{nodes_range[1]}_with_ptype_cstype.csv'
-    rmefeature_file = f'{mefeature_file[:-4]}_regional.csv'
-    mef = MEFeatures(feature_file)
-    mef.calc_micro_env_features(mefeature_file, nodes_range=nodes_range)
-    #mef.calc_regional_mefeatures(mefeature_file, rmefeature_file)
+    if 0:
+        nodes_range = (500, 1500)
+        feature_file = '../data/lm_features_with_ptype_cstype.csv'
+        mefeature_file = f'../data/micro_env_features_nodes{nodes_range[0]}-{nodes_range[1]}_with_ptype_cstype.csv'
+        rmefeature_file = f'{mefeature_file[:-4]}_regional.csv'
+        mef = MEFeatures(feature_file)
+        mef.calc_micro_env_features(mefeature_file, nodes_range=nodes_range)
+        #mef.calc_regional_mefeatures(mefeature_file, rmefeature_file)
+
+    if 1:
+        nodes_range = (300, 1500)
+        feature_file = '../data/lm_features_d22_all.csv'
+        mefile = f'../data/micro_env_features_nodes{nodes_range[0]}-{nodes_range[1]}_withoutNorm.csv'
+        mef = MEFeatures(feature_file)
+        mef.calc_micro_env_features(mefile, nodes_range=nodes_range, remove_background=False)
+    
     
     # temporal, for test only!
     #mef.calc_regional_single_features(mefeature_file, f'non-environ_features_nodes{nodes_range[0]}-{nodes_range[1]}.csv')

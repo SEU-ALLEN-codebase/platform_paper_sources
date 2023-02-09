@@ -148,8 +148,8 @@ def aggregate_information(feature_dir, swc_dir):
 
 
 if __name__ == '__main__':
-    swc_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/Research/platform/micro_environ/data/42k_local_morphology_gcoord_registered'
-    feature_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/Research/platform/micro_environ/data/42k_vaa3d_feature'
+    swc_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/Research/platform/micro_environ/data/improved_reg/42k_local_morphology_gcoord_registered'
+    feature_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/Research/platform/micro_environ/data/original/42k_vaa3d_feature'
     aggregate_information(feature_dir, swc_dir)
 
     

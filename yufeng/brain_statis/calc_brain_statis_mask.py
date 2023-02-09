@@ -143,7 +143,7 @@ class CalcBrainStatis(object):
         self.mask_dims = mask_dims
         # self.coord_factor = max_res_dims / mask_dims / self.multiplier
         self.coord_factor = max_res_dims / mask_dims 
-        self.out_mask = np.zeros(self.region_mask.shape, dtype=np.uint8)
+        self.out_mask = np.zeros(self.region_mask.shape, dtype=np.uint16)
 
     def set_strides_through_block(self, block):
         """
@@ -201,7 +201,7 @@ class CalcBrainStatis(object):
         pos_mapped_x = np.clip(pos_mapped_x, 0, self.mask_dims[1]-1)
 
         regions = self.region_mask[0,pos_mapped_z, pos_mapped_y, pos_mapped_x]
-        self.out_mask[0,pos_mapped_z, pos_mapped_y, pos_mapped_x] = 1
+        self.out_mask[0,pos_mapped_z, pos_mapped_y, pos_mapped_x] += 1
         # then you can use the regions of foreground voxels
         region_counter = Counter(regions)
         return region_counter
@@ -359,7 +359,7 @@ if __name__ == '__main__':
     tera_downsize_file = './ccf_info/TeraDownsampleSize.csv'
     mask_file_dir = '/PBshare/SEU-ALLEN/Users/ZhixiYun/data/registration/Inverse'
     source = 'fMOST-Zeng'
-    out_dir = f'./statis_out_mask/{source}'
+    out_dir = f'./statis_out_mask2/{source}'
     res_ids = -3
     filesize_thresh = 1.7
     nproc = 3

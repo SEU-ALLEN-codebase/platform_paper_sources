@@ -9,7 +9,8 @@
 #   Description  : 
 #
 #================================================================
-
+import os
+import itertools
 import numpy as np
 import pickle
 import pandas as pd
@@ -44,20 +45,8 @@ def load_data(feat_files):
     df.drop(['Unnamed: 0_x', 'region_y', "Unnamed: 0_y"], axis=1, inplace=True)
     return df
 
-
-def plot_sdmatrix_full(feat_files, figname, title, normalize=True):
-    df = load_data(feat_files)
-    structs = [stype2struct[region] for region in df.index]
-    df.reset_index(inplace=True)
-    df.drop(['region_x', 'prefix'], axis=1, inplace=True)
-    
-    if normalize:
-        df = (df - df.mean()) / (df.std() + 1e-10)
-
-    corr = df.transpose().corr()
-    plot_sd_matrix(structs, corr, figname, title)
         
-def plot_sdmatrix_struct(feat_files, figname, regions, title, normalize=True, vmin=-0.4, vmax=0.8, annot=False):
+def plot_sdmatrix_struct(feat_files, figname, regions, title='', normalize=True, vmin=-0.4, vmax=0.8, annot=False):
     df = load_data(feat_files)
     df = df[df.index.isin(regions)]
 
@@ -71,10 +60,8 @@ def plot_sdmatrix_struct(feat_files, figname, regions, title, normalize=True, vm
     corr = df.transpose().corr()
     plot_sd_matrix(structs, regions, corr, figname, title, vmin=vmin, vmax=vmax, annot=annot)
 
-def plot_sdmatrix_struct_with_cortical_layer(feat_files, celltype_file, figname, regions, title, normalize=True, vmin=-0.4, vmax=0.8, annot=False):
+def plot_sdmatrix_struct_with_cortical_layer(feat_files, celltype_file, figname, regions, title='', normalize=True, vmin=-0.4, vmax=0.8, annot=False):
     df = load_data(feat_files)
-    df = df[df.index.isin(regions)]
-
     df_ct = pd.read_csv(celltype_file, index_col=0, usecols=('Cell name', 'Manually_corrected_soma_region', 'Cortical_layer'))
     df = df.merge(df_ct, how='inner', left_on='prefix', right_on='Cell name')
     print(df.shape)
@@ -88,10 +75,6 @@ def plot_sdmatrix_struct_with_cortical_layer(feat_files, celltype_file, figname,
         cstype.append(f'{stype}{cl}')
     df['cstype'] = cstype
 
-    # remove with
-    #rs, counts = np.unique(cstype, return_counts=True)
-    #rs = rs[counts >= 5]
-    #rs = sorted(rs, key=lambda x: x.split('-')[-1])
     rs = CorticalLayers
     df = df[df.cstype.isin(rs)]
 
@@ -103,17 +86,9 @@ def plot_sdmatrix_struct_with_cortical_layer(feat_files, celltype_file, figname,
         df = (df - df.mean()) / (df.std() + 1e-10)
 
     corr = df.transpose().corr()
-    print(rs)
     plot_sd_matrix(structs, rs, corr, figname, title, vmin=vmin, vmax=vmax, annot=annot)
    
-def plot_sdmatrix_struct_with_ptype(feat_files, celltype_file, figname, regions, title, normalize=True, vmin=-0.4, vmax=0.8, annot=False):
-    def sort_lambda(x):
-        sp = x.split('-')
-        if len(sp) == 1:
-            return f'1_{x}'
-        else:
-            return f'0_{sp[-1]}_{x}'
-
+def plot_sdmatrix_struct_with_ptype(feat_files, celltype_file, figname, regions, title='', normalize=True, vmin=-0.4, vmax=0.8, annot=False):
     df = load_data(feat_files)
     df_ct = pd.read_csv(celltype_file, index_col=0, usecols=('Cell name', 'Manually_corrected_soma_region', 'Subclass_or_type'))
     df = df.merge(df_ct, how='inner', left_on='prefix', right_on='Cell name')
@@ -129,16 +104,8 @@ def plot_sdmatrix_struct_with_ptype(feat_files, celltype_file, figname, regions,
         ptypes.append(f'{stype}{pt}')
     df['ptype'] = ptypes
 
-    # remove CP_others
-    df = df[df['ptype'].isin(regions)]
-
-    # remove with
-    #rs, counts = np.unique(ptypes, return_counts=True)
-    #rs = rs[counts >= 5]
-    #rs = sorted(rs, key=sort_lambda)
-    #df = df[df.ptype.isin(rs)]
-
-    structs = [region for region in ptypes if region in regions]
+    df = df[df.ptype.isin(regions)]
+    structs = [region for region in df.ptype]
     df.reset_index(inplace=True)
     df.drop(['Manually_corrected_soma_region', 'Subclass_or_type', 'prefix', 'ptype'], axis=1, inplace=True)
     
@@ -155,23 +122,29 @@ if __name__ == '__main__':
                   'min_num_neurons10_l2/features_r2_somaTypes_basal.csv', 
                   'min_num_neurons10_l2/features_r2_somaTypes_apical.csv']
     celltype_file = '../../common_lib/41586_2021_3941_MOESM4_ESM.csv'
+    outdir = '../../sd_matrix/levels'
 
     if 0:
-        figname = 'sdmatrix_arbors'
-        title = ''
-        
-        plot_sdmatrix_full(feat_files, figname, title, True)
+        # stypes
+        structures = [key for key in struct_dict.keys()] + ['all']
+        regions_list = [value for value in struct_dict.values()]
+        regions_list = regions_list + [list(itertools.chain(*regions_list))]
+        for structure, regions in zip(structures, regions_list):
+            figname = os.path.join(outdir, f'sdmatrix_arbor_stype_{structure.lower()}')
+            plot_sdmatrix_struct(feat_files, figname, regions=regions, vmin=-0.4, vmax=0.8, annot=False)
+
+    if 0:
+        # ptypes
+        structures = [key for key in PstypesToShow.keys()] + ['all']
+        regions_list = [value for value in PstypesToShow.values()]
+        regions_list = regions_list + [list(itertools.chain(*regions_list))]
+        for structure, regions in zip(structures, regions_list):
+            figname = os.path.join(outdir, f'sdmatrix_arbor_ptype_{structure.lower()}')
+            plot_sdmatrix_struct_with_ptype(feat_files, celltype_file, figname, regions=regions, vmin=-0.4, vmax=0.8, annot=False)
+
 
     if 1:
-        for structure, regions in struct_dict.items():
-            #figname = f'sdmatrix_arbor_{structure.lower()}'
-            #plot_sdmatrix_struct(feat_files, figname, regions, '', True, vmin=-0.4, vmax=0.8, annot=False)
-
-            #if structure == 'CTX':
-            #    figname = f'sdmatrix_arbor_{structure.lower()}_withLayer'
-            #    plot_sdmatrix_struct_with_cortical_layer(feat_files, celltype_file, figname, regions, '', True, vmin=-0.4, vmax=0.8, annot=False)
-
-            figname = f'sdmatrix_arbor_{structure.lower()}_withPtype'
-            plot_sdmatrix_struct_with_ptype(feat_files, celltype_file, figname, PstypesToShow[structure], '', True, vmin=-0.4, vmax=0.8, annot=False)
+        figname = os.path.join(outdir, f'sdmatrix_arbor_cstype_all')
+        plot_sdmatrix_struct_with_cortical_layer(feat_files, celltype_file, figname, CorticalLayers, '', True, vmin=-0.4, vmax=0.8, annot=False)
                 
 

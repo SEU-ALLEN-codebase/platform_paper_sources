@@ -214,7 +214,7 @@ for ct in ['stype', 'ptype', 'cstype']:
         dfp = df_prominence.to_numpy()
         mask = orders_x_raw < 0
         dfp[mask] = dfp[mask] * -1.
-        df_prominence.iloc[:,:] = (dfp + 1.)/2
+        df_prominence.iloc[:,:] = dfp
 
         # reorder the columns to keep it the same as clustermap before
         reordered_ind = g2.dendrogram_col.reordered_ind
@@ -247,7 +247,7 @@ for ct in ['stype', 'ptype', 'cstype']:
         
         # colorbar
         g1.cax.set_xlabel('Feature prominence', fontsize=rc_fontsize)
-        g1.cax.set_xticks(np.arange(0,1.001,0.5), np.arange(0,1.001,0.5), fontsize=rc_fontsize)
+        g1.cax.set_xticks(np.arange(-1,1.001,0.5), np.arange(-1,1.001,0.5), fontsize=rc_fontsize)
         g1.cax.tick_params(direction='in')
 
         # remove xlabel

@@ -9,7 +9,7 @@
 #   Description  : 
 #
 #================================================================
-
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -33,7 +33,7 @@ stype2struct = {
     'SSp-m': 'CTX',
     'SSp-ll': 'CTX',
     'SSp-bfd': 'CTX',
-    'VPLpc': 'TH',
+    'VPLpc': 'TH',  # remove it
     'SMT': 'TH',
     'SSp-n': 'CTX',
     'SSp-un': 'CTX',
@@ -60,7 +60,8 @@ CorticalLayers = [
 ]
 
 PstypesToShow = {
-    'CTX': ['AId-Car3', 'CLA-Car3', 'SSs-Car3', 'MOp-ET', 'MOs-ET', 'RSPv-ET', 
+    #'CTX': ['AId-Car3', 'CLA-Car3', 'SSs-Car3', 'MOp-ET', 'MOs-ET', 'RSPv-ET', 
+    'CTX': ['MOp-ET', 'MOs-ET', 'RSPv-ET', 
             'SSp-bfd-ET', 'SSp-ll-ET', 'SSp-m-ET', 'SSp-n-ET', 'SSp-ul-ET', 
             'SSp-un-ET', 'SSs-ET', 'MOp-IT', 'MOs-IT', 'SSp-bfd-IT', 'SSp-m-IT', 
             'SSp-n-IT', 'SSp-ul-IT', 'SSs-IT', 'VISp-IT', 'VISrl-IT'],
@@ -238,6 +239,47 @@ def get_structures_from_regions(region_ids, ana_dict, struct_dict=None, return_n
             structures.append(np.NaN)
     return np.array(structures)
 
+def normalize_features(df, feat_names=None, inplace=False):
+    if feat_names is None:
+        feat_names = df.columns
+    tmp = df.loc[:, feat_names]
+    if inplace:
+        df.loc[:, feat_names] = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
+        return df
+    else:
+        df_new = df.copy()
+        df_new.loc[:, feat_names] = (tmp - tmp.mean()) / (tmp.std() + 1e-10)
+        return df_new
+
+def assign_subtypes(df, reg_key='Manually_corrected_soma_region', 
+                    cortical_layer='Cortical_layer', subclass='Subclass_or_type', 
+                    inplace=True):
+    cstypes, ptypes = [], []
+    for stype, cl, pt in zip(df.Manually_corrected_soma_region, df.Cortical_layer, df.Subclass_or_type):
+        if cl is np.NaN:
+            cl = ''
+        else:
+            cl = f'-{cl}'
+        cstypes.append(f'{stype}{cl}')
+
+        if pt is np.NaN:
+            pt = ''
+        else:
+            pt = pt.split('_')[-1]
+            pt = f'-{pt}'
+        ptypes.append(f'{stype}{pt}')
+    
+    if inplace:
+        df['cstype'] = cstypes
+        df['ptype'] = ptypes
+        return df
+    else:
+        df_new = df.copy()
+        df_new['cstype'] = cstypes
+        df_new['ptype'] = ptypes
+        return df_new
+    
+
 def plot_sd_matrix(brain_structures, structs, corr_raw, figname, title, annot=True, vmin=-0.5, vmax=0.9):
     
     def plot_single_matrix(matrix, structs, figname, vmin, vmax, annot):
@@ -245,7 +287,8 @@ def plot_sd_matrix(brain_structures, structs, corr_raw, figname, title, annot=Tr
 
         matrix = np.round(matrix, 2)
         df_sd = pd.DataFrame(matrix, columns=structs, index=structs)
-        df_sd.to_csv(f'corr_regionLevel_{figname}.csv', float_format='%.4f')
+        outdir, outname = os.path.split(figname)
+        df_sd.to_csv(os.path.join(outdir, f'corr_regionLevel_{outname}.csv'), float_format='%.4f')
 
         sd_self = np.diag(df_sd).mean()
         sd_inter = df_sd.to_numpy()[np.triu_indices_from(df_sd, k=1)].mean()
@@ -297,7 +340,8 @@ def plot_sd_matrix(brain_structures, structs, corr_raw, figname, title, annot=Tr
 
     corr = corr_raw.copy()
     corr['type'] = brain_structures
-    corr.to_csv(f'corr_neuronLevel_{figname}.csv', float_format='%.4f')
+    outdir, outname = os.path.split(figname)
+    corr.to_csv(os.path.join(outdir, f'corr_neuronLevel_{outname}.csv'), float_format='%.4f')
     
     plot_single_matrix(sd_matrix, structs, figname, vmin, vmax, annot)
 

@@ -9,12 +9,14 @@
 #   Description  : 
 #
 #================================================================
+import os
+import itertools
 import sys
 import numpy as np
 import pandas as pd
 
 sys.path.append('../common_lib')
-from common_utils import load_type_from_excel, stype2struct, plot_sd_matrix, struct_dict, CorticalLayers
+from common_utils import load_type_from_excel, stype2struct, plot_sd_matrix, struct_dict, CorticalLayers, PstypesToShow
 
 FEAT_NAMES = ["Bouton Number", "TEB Ratio",
               "Bouton Density", "Geodesic Distance",
@@ -60,24 +62,11 @@ def load_data_with_cortical_layer(feat_file, celltype_file, normalize=True, min_
     return df_sel
 
 def load_data_with_ptype(feat_file, celltype_file, regions=None, normalize=True, min_num_neurons=10):
-    def sort_lambda(x):
-        sp = x.split('-')
-        if len(sp) == 1:
-            return f'1_{x}'
-        else:
-            return f'0_{sp[-1]}_{x}'
-
     df_ct = pd.read_csv(celltype_file, index_col=0)
     df_f = pd.read_csv(feat_file)
     df = df_f.merge(df_ct, how='inner', on='Cell name')
 
-    if regions is not None:
-        df = df[df.Manually_corrected_soma_region.isin(regions)]
-    
-    # remove number of neurons less than `min_num_neurons`
-    regions, counts = np.unique(df.Manually_corrected_soma_region, return_counts=True)
-    regions = regions[counts >= min_num_neurons]
-    df_sel = df[df.Manually_corrected_soma_region.isin(regions)]
+    df_sel = df.copy()
 
     ptypes = []
     for stype, pt in zip(df_sel.Manually_corrected_soma_region, df_sel.Subclass_or_type):
@@ -89,13 +78,6 @@ def load_data_with_ptype(feat_file, celltype_file, regions=None, normalize=True,
         ptypes.append(f'{stype}{pt}')
     df_sel['ptype'] = ptypes
 
-    # remove CP_others
-    df_sel = df_sel[df_sel['ptype'] != 'CP-others']
-
-    # remove with 
-    regions, counts = np.unique(df_sel.ptype, return_counts=True)
-    regions = regions[counts >= 5]
-    regions = sorted(regions, key=sort_lambda)
     df_sel = df_sel[df_sel.ptype.isin(regions)]
 
     return df_sel, regions
@@ -124,15 +106,13 @@ def plot_struct(feat_file, celltype_file, figname, normalize=True, min_num_neuro
 
 def plot_struct_with_cortical_layer(feat_file, celltype_file, figname, normalize=True, min_num_neurons=10, regions=None, vmin=-0.4, vmax=0.8, annot=False):
     df_sel = load_data_with_cortical_layer(feat_file, celltype_file, normalize, min_num_neurons)
-    
-    if regions is not None:
-        df_sel = df_sel[df_sel.Manually_corrected_soma_region.isin(regions)]
+    #df_sef = df_sel[df_sel.isin(regions)]
     structs = [stype for stype in df_sel.cstype]
     df_sel = df_sel[FEAT_NAMES]
     if normalize:
         df_sel = (df_sel - df_sel.mean()) / (df_sel.std() + 1e-10)
     corr = df_sel.transpose().corr()
-    plot_sd_matrix(structs, CorticalLayers, corr, figname, '', vmin=vmin, vmax=vmax, annot=annot)
+    plot_sd_matrix(structs, regions, corr, figname, '', vmin=vmin, vmax=vmax, annot=annot)
 
 def plot_struct_with_ptype(feat_file, celltype_file, figname, normalize=True, min_num_neurons=10, regions=None, vmin=-0.4, vmax=0.8, annot=False):
     df_sel, ptypes = load_data_with_ptype(feat_file, celltype_file, regions, normalize, min_num_neurons)
@@ -149,15 +129,29 @@ def plot_struct_with_ptype(feat_file, celltype_file, figname, normalize=True, mi
 if __name__ == '__main__':
     feat_file = 'bouton_features/bouton_features.csv'
     celltype_file = '../common_lib/41586_2021_3941_MOESM4_ESM.csv'
+    outdir = '../sd_matrix/levels'
 
-    for structure, regions in struct_dict.items():
-        #figname = f'sdmatrix_bouton_{structure.lower()}'
-        #df = plot_struct(feat_file, celltype_file, figname, regions=regions, vmin=-0.4, vmax=0.8)
-        
-        #if structure == 'CTX':
-        #    figname = f'sdmatrix_bouton_{structure.lower()}_withLayer'
-        #    df = plot_struct_with_cortical_layer(feat_file, celltype_file, figname, regions=regions, vmin=-0.4, vmax=0.8)
+    if 0:
+        # stypes
+        structures = [key for key in struct_dict.keys()] + ['all']
+        regions_list = [value for value in struct_dict.values()]
+        regions_list = regions_list + [list(itertools.chain(*regions_list))]
+        for structure, regions in zip(structures, regions_list):
+            figname = os.path.join(outdir, f'sdmatrix_bouton_stype_{structure.lower()}')
+            plot_struct(feat_file, celltype_file, figname, regions=regions, vmin=-0.4, vmax=0.8, annot=False)
 
-        figname = f'sdmatrix_bouton_{structure.lower()}_withPtype'
-        df = plot_struct_with_ptype(feat_file, celltype_file, figname, regions=regions, vmin=-0.4, vmax=0.8)
+    if 0:
+        # ptypes
+        structures = [key for key in PstypesToShow.keys()] + ['all']
+        regions_list = [value for value in PstypesToShow.values()]
+        regions_list = regions_list + [list(itertools.chain(*regions_list))]
+        for structure, regions in zip(structures, regions_list):
+            figname = os.path.join(outdir, f'sdmatrix_bouton_ptype_{structure.lower()}')
+            plot_struct_with_ptype(feat_file, celltype_file, figname, regions=regions, vmin=-0.4, vmax=0.8, annot=False)
+
+
+    if 1:
+        figname = os.path.join(outdir, f'sdmatrix_bouton_cstype_all')
+        plot_struct_with_cortical_layer(feat_file, celltype_file, figname, regions=CorticalLayers, vmin=-0.4, vmax=0.8, annot=False)
+
 
