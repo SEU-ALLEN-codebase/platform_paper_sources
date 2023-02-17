@@ -144,7 +144,7 @@ def calc_interregional_stereotypy_ridge_plot(data_dir='./levels', type_str='styp
         'microenviron': 'orangered',
         'fullMorpho': 'darkviolet',
         'arbor': 'blue',
-        'motif': 'cyan',
+        'motif': 'peru',
         'bouton': 'forestgreen'
     }
     type_names = {
@@ -194,7 +194,8 @@ def calc_interregional_stereotypy_ridge_plot(data_dir='./levels', type_str='styp
     print(f'Total shape of data: {df.shape}')
     
     # Initialize the facegrid
-    g = sns.FacetGrid(df, row='type', hue='level', aspect=10, height=height, palette=pal)
+    g = sns.FacetGrid(df, row='type', col='level', hue='level', aspect=5, 
+                      height=height, palette=pal)
     
     # Draw the densities in a few steps
     print('Draw kdeplot...')
@@ -209,7 +210,7 @@ def calc_interregional_stereotypy_ridge_plot(data_dir='./levels', type_str='styp
 
     # Define and use a simple function to label the plot in axes coordinates
     def label(x, color, label):
-        if label == 'bouton':
+        if label == 'microenviron':
             ax = plt.gca()
             ax.text(0, (1+hspace)*0.4, x.iloc[0], fontweight="bold", color='k',
                     ha="left", va="center", transform=ax.transAxes,
@@ -218,7 +219,7 @@ def calc_interregional_stereotypy_ridge_plot(data_dir='./levels', type_str='styp
     g.map(label, 'type')
 
     # Set the subplots to overlap
-    g.figure.subplots_adjust(hspace=hspace)
+    g.figure.subplots_adjust(hspace=hspace, wspace=-0.1)
 
     # Remove axes details that don't play well with overlap
     g.set_titles("")
@@ -227,9 +228,10 @@ def calc_interregional_stereotypy_ridge_plot(data_dir='./levels', type_str='styp
     g.set_xticklabels(np.arange(-1,1.5,0.5), fontsize=fontsize-2, fontweight='bold')
     #g.set_axis_labels('Correlation', fontsize=fontsize, fontweight='bold')
     g.set_axis_labels('', fontsize=0, fontweight='bold')
-    #g.add_legend()
-    #plt.setp(g._legend.get_title(), fontsize=fontsize, fontweight='normal')
-    #plt.setp(g._legend.get_texts(), fontsize=fontsize, fontweight='normal')
+    g.add_legend()
+    sns.move_legend(g, 'upper center', ncols=5)
+    plt.setp(g._legend.get_title(), fontsize=0, fontweight='bold')
+    plt.setp(g._legend.get_texts(), fontsize=fontsize, fontweight='bold')
     
     g.despine(bottom=True, left=True)
 
@@ -242,6 +244,6 @@ if __name__ == '__main__':
     for type_str in ['stype', 'ptype', 'cstype']:
         #calc_ds_similarity_among_levels(type_str=type_str)
         #calc_interregional_stereotypy(type_str=type_str)
-        if type_str != 'ptype': continue
+        #if type_str != 'ptype': continue
         calc_interregional_stereotypy_ridge_plot(type_str=type_str)
 
