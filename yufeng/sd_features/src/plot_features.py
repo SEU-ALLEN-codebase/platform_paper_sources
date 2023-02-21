@@ -61,7 +61,7 @@ def get_cstype_categories():
     return pd.Series(cgs, name='cs-type', index=index)
 
 
-levels = ['microenviron', 'fullMorpho', 'arbor', 'motif', 'bouton']
+levels = ['microenviron', 'fullMorpho', 'arbor', 'bouton', 'motif']
 #levels = ['fullMorpho', 'arbor', 'motif', 'bouton']
 data_dir = '../data'
 use_std_feature = False
@@ -71,7 +71,7 @@ do_prominence_estimation = True
 do_plot = True
 
 #colors = ['orangered', 'gold', 'medianblue', 'lime', 'magenta', 'brown']
-colors = ['b', 'r', 'k', 'm', 'c', 'g', 'y']
+colors = ['b', 'r', 'black', 'darkorange', 'saddlebrown', 'cyan', 'purple']
 rcolors_dict = dict(zip(levels, colors[-len(levels):]))
 
 for ct in ['stype', 'ptype', 'cstype']:
@@ -174,16 +174,20 @@ for ct in ['stype', 'ptype', 'cstype']:
         g2.ax_col_colors.axes.set_yticklabels(['s-type'], fontsize=rc_fontsize)
         
         # colorbar
-        g2.cax.set_position([0.16, .82, .02, .15])
-        g2.cax.set_ylabel('Standardized feature value', fontsize=rc_fontsize)
+        g2.cax.set_position([0.16, .8, .02, .1])
+        g2.cax.set_ylabel('Standardized feature', fontsize=rc_fontsize)
         g2.cax.set_yticks(np.arange(-2,3), np.arange(-2,3), fontsize=rc_fontsize)
-        g2.cax.tick_params(left=True, right=False, labelleft=True, labelright=False, direction='in')
+        g2.cax.tick_params(left=False, right=True, labelleft=False, labelright=True, direction='in')
         g2.cax.yaxis.set_label_position("left")
 
         # remove xlabel
         g2.ax_heatmap.set_xlabel('', fontsize=0)
         g2.ax_heatmap.tick_params(axis='x', labelsize=13, direction='in')
         g2.ax_heatmap.tick_params(axis='y', labelsize=11, direction='in')
+
+        # adjust dendrogram
+        col = g2.ax_col_dendrogram.get_position()
+        g2.ax_col_dendrogram.set_position([col.x0, col.y0, col.width, col.height*0.4])
         
         plt.savefig(f'{ct}_featuremap.png', dpi=300)
         plt.close('all')
