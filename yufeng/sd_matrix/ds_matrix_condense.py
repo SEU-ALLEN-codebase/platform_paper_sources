@@ -180,7 +180,7 @@ def calc_dsmatrix_sctype(df, figname):
     print(df.shape, corr.shape, sctypes, regions)
     plot_sd_matrix(sctypes, regions, corr, figname, '', annot=False, vmin=-0.5, vmax=0.5)
 
-def plot_dsmatrix_replot(matfile, type_str='stype'):
+def plot_dsmatrix_relplot(matfile, type_str='stype'):
     df = pd.read_csv(matfile, index_col=0)
     
     height = 12
@@ -202,15 +202,17 @@ def plot_dsmatrix_replot(matfile, type_str='stype'):
     g.ax.margins(x=0.02, y=0.02)
     for label in g.ax.get_xticklabels():
         label.set_rotation(90)
-    plt.xticks(fontsize=18)
-    plt.yticks(fontsize=18)
+    
+    plt.xticks(fontsize=21)
+    plt.yticks(fontsize=21)
 
     for artist in g.legend.legendHandles:
         artist.set_edgecolor("1.")
     plt.setp(g._legend.get_texts(), fontsize=16)
     plt.setp(g._legend.get_title(), fontsize=16)
+    g._legend.set_bbox_to_anchor([1.01,0.3])
 
-    plt.subplots_adjust(bottom=0.15)
+    plt.subplots_adjust(left=0.14, bottom=0.15)
 
     #plt.tight_layout()
     plt.savefig(f'dsmatrix_multi-scale_{type_str}.png', dpi=300)
@@ -269,6 +271,6 @@ if __name__ == '__main__':
     for type_str in ['stype', 'sctype', 'sptype']:
         print(type_str)
         matfile = f'./multi-scale/corr_regionLevel_sdmatrix_heatmap_{type_str}_all.csv'
-        plot_dsmatrix_replot(matfile, type_str=type_str)
+        plot_dsmatrix_relplot(matfile, type_str=type_str)
     
 

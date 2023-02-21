@@ -31,9 +31,15 @@ from common_utils import struct_dict
 __NUM_BINS__ = 25
 __LABEL_FONTS__ = 20
 
-def load_spos_corr(spos_file, df_corr, is_spos=True):
+def load_spos_corr(spos_file, df_corr, is_spos=True, zc=228):
     df_spos = pd.read_csv(spos_file, index_col=0)
     if is_spos:
+        # all neurons mapped to left-hemisphere
+        right_h = df_spos.z_pos >= zc
+        nzi = np.nonzero(right_h.to_numpy())[0]
+        z_loc = df_spos.columns.get_loc('z_pos')
+        df_spos.iloc[nzi, z_loc] = zc * 2 - df_spos.iloc[nzi, z_loc]
+
         # to 1um resolution
         df_spos.loc[:, ['x_pos', 'y_pos', 'z_pos']] *= 0.04
     else:
@@ -49,7 +55,7 @@ def load_spos_corr(spos_file, df_corr, is_spos=True):
 
     return dists, corrs
 
-def plot_func(dists, corrs, xname, yname, nsample, figname, xmax):
+def plot_func(dists, corrs, xname, yname, nsample, figname, xmax, bs=5):
     sample_indices = random.sample(range(len(dists)), nsample)
     dists_sample = dists[sample_indices]
     corrs_sample = corrs[sample_indices]
@@ -75,7 +81,6 @@ def plot_func(dists, corrs, xname, yname, nsample, figname, xmax):
     plt.axhline(y=0, linewidth=2, linestyle='-', color='gray', clip_on=False, alpha=1.)
 
     plt.xlim(0, xmax)
-    bs = xmax // 6
     plt.xticks(np.arange(0,xmax+1,bs), np.arange(0,xmax+1,bs), fontsize=__LABEL_FONTS__-5)
     yticks = np.round(np.arange(-0.8,1,0.4),1)
     plt.yticks(yticks, fontsize=__LABEL_FONTS__-5)
@@ -95,13 +100,13 @@ def plot_func(dists, corrs, xname, yname, nsample, figname, xmax):
 def soma_dist_vs_corr(spos_file, corr_file):
     df_corr = pd.read_csv(corr_file, index_col=0)
     df_corr.drop(['type'], axis=1, inplace=True)
-    dists, corrs = load_spos_corr(spos_file, df_corr)    
+    dists, corrs = load_spos_corr(spos_file, df_corr)
 
     nsample = 10000
     xname = 'Soma-soma distance'
     yname = 'Correlation'
     figname = 'soma_distance_vs_correlation.png'
-    plot_func(dists, corrs, xname, yname, nsample, figname, xmax=12)
+    plot_func(dists, corrs, xname, yname, nsample, figname, xmax=10, bs=5)
     
  
 def proj_dist_vs_corr(proj_file, corr_file):
@@ -113,7 +118,7 @@ def proj_dist_vs_corr(proj_file, corr_file):
     xname = 'Axon-axon "distance"'
     yname = 'Correlation'
     figname = 'axon_distance_vs_correlation.png'
-    plot_func(dists, corrs, xname, yname, nsample, figname, xmax=60)
+    plot_func(dists, corrs, xname, yname, nsample, figname, xmax=60, bs=6)
 
 def soma_proj_dist_vs_corr(spos_file, proj_file, corr_file):
     df_corr = pd.read_csv(corr_file, index_col=0)
@@ -129,18 +134,38 @@ def soma_proj_dist_vs_corr(spos_file, proj_file, corr_file):
     figname = 'neuron_distance_vs_correlation.png'
     plot_func(dists, corrs, xname, yname, nsample, figname, xmax=25)
 
+def calc_region_size_from_pdists(regions, df):
+    means = []
+    stds = []
+    for region in regions:
+        print(region)
+        cur_proj = df.loc[region]
+        pdists = distance_matrix(cur_proj, cur_proj)
+        indices = np.triu_indices_from(pdists, k=1)
+        dists = pdists[indices]
+        means.append(dists.mean())
+        stds.append(dists.std())
+    data = np.array([regions, means, stds]).transpose()
+    df = pd.DataFrame(data, columns=['region', 'mean', 'std'])
+    df = df.astype({'mean': float, 'std': float})
+    return df
+
 def estimate_region_size(regions=None, scale=25., region_file='region_size.csv'):
     if os.path.exists(region_file):
         df = pd.read_csv(region_file, index_col=0)
     else:
         mask = load_image(MASK_CCF25_FILE)
+        # we should zeroing the right-hemisphere
+        sz, sy, sx = mask.shape
+        mask[sz//2:] = 0
+
         ana_dict = parse_ana_tree(keyname='name')
         #get the indices of ana_dict
         if regions is None:
             regions = struct_dict['CTX'] + struct_dict['TH'] + struct_dict['STR']
 
-        radii = []
-        widths = []
+        majors = []
+        minors = []
         for region in regions:
             print(region)
             rids = ana_dict[region]['orig_ids']
@@ -155,35 +180,52 @@ def estimate_region_size(regions=None, scale=25., region_file='region_size.csv')
             cs_max = np.max(cs_t, axis=0)
             cs_min = np.min(cs_t, axis=0)
             dim = (cs_max - cs_min) * scale
-            widths.append(np.min(dim))
-            radii.append(np.sqrt(np.power(dim, 2).sum()/3.))
-        
-        data = np.array([regions, radii, widths]).transpose()
-        df = pd.DataFrame(data, columns=['region', 'radius', 'width'])
+            minors.append(np.min(dim))
+            majors.append(np.max(dim))
+            
+        data = np.array([regions, majors, minors]).transpose()
+        df = pd.DataFrame(data, columns=['region', 'major', 'minor'])
+        df = df.astype({'major': float, 'minor': float})
         df.to_csv('region_size.csv')
         
     # ploting
     # scale to millimeter
     fsize_tick = 9
-    fsize_label = 13
-    df.loc[:, ['radius', 'width']] = df.loc[:, ['radius', 'width']] / 1000.
+    fsize_label = 17
+    pal = {
+        'major': 'blue',
+        'minor': 'magenta'
+    }
+    df.loc[:, ['major', 'minor']] = df[['major', 'minor']] / 1000.
     
     plt.rcParams['figure.figsize'] = [4,4]
-    g = sns.scatterplot(df.reset_index(), x='index', y='radius', color='darkorange')
-    mean_radius = df.radius.mean()
-    plt.axhline(y=mean_radius, linewidth=2, linestyle='--', color='k', alpha=0.8)
+    dfs = df.set_index('region').stack().reset_index()
+    dfs.rename(columns={0:'value'}, inplace=True)
+    dfs['INDEX'] = np.repeat(np.arange(df.shape[0]), 2)
+    g = sns.scatterplot(dfs, x='INDEX', y='value', hue='level_1', s=45, palette=pal)
+    mean_major = df.major.mean()
+    mean_minor = df.minor.mean()
+    plt.axhline(y=mean_major, linewidth=2, linestyle='--', color=pal['major'], alpha=0.8)
+    plt.axhline(y=mean_minor, linewidth=2, linestyle='--', color=pal['minor'], alpha=0.8)
     plt.xticks(np.arange(df.shape[0]), df.region, fontsize=fsize_tick, rotation=90, ha='center')
     plt.yticks(fontsize=fsize_tick)
     plt.xlabel("")
-    plt.ylabel('Radius of region (mm)', fontsize=fsize_label)
+    plt.ylabel('Length (mm)', fontsize=fsize_label)
+    plt.legend(title='Axes', loc='upper right', bbox_to_anchor=(0.9,0.97))
 
-    plt.gca().text(14, mean_radius+0.1, f"avg. radius={mean_radius:.2f}", fontsize=10, style='italic')
-    plt.gca().xaxis.set_tick_params(width=2, direction='in')
-    plt.gca().yaxis.set_tick_params(width=2, direction='in')
-    plt.gca().spines['left'].set_linewidth(2)
-    plt.gca().spines['right'].set_linewidth(2)
-    plt.gca().spines['top'].set_linewidth(2)
-    plt.gca().spines['bottom'].set_linewidth(2)
+    ax = plt.gca()
+    ax.text(1.04, 0.5, f"avg_major={mean_major:.2f}; avg_minor={mean_minor:.2f}",
+        horizontalalignment='center',
+        verticalalignment='center',
+        rotation=-90,
+        transform=ax.transAxes,
+        fontsize=12)
+    ax.xaxis.set_tick_params(width=2, direction='in')
+    ax.yaxis.set_tick_params(width=2, direction='in')
+    ax.spines['left'].set_linewidth(2)
+    ax.spines['right'].set_linewidth(2)
+    ax.spines['top'].set_linewidth(2)
+    ax.spines['bottom'].set_linewidth(2)
     plt.tight_layout()
 
     plt.savefig('region_size.png', dpi=300)
@@ -201,44 +243,39 @@ def estimate_region_projection_size(proj_file, celltype_file, regions=None, regi
         if regions is None:
             regions = struct_dict['CTX'] + struct_dict['TH'] + struct_dict['STR']
 
-        means = []
-        stds = []
-        for region in regions:
-            print(region)
-            cur_proj = df_proj.loc[region]
-            pdists = distance_matrix(cur_proj, cur_proj)
-            indices = np.triu_indices_from(pdists, k=1)
-            dists = pdists[indices]
-            means.append(dists.mean())
-            stds.append(dists.std())
-        
-        data = np.array([regions, means, stds]).transpose()
-        df = pd.DataFrame(data, columns=['region', 'mean', 'std'])
+        df = calc_region_size_from_pdists(regions, df_proj)
         df.to_csv(region_file)
         
     # ploting
     # scale to millimeter
     fsize_tick = 9
-    fsize_label = 13
+    fsize_label = 17
     df.loc[df.index, ['mean', 'std']] = df[['mean', 'std']] / 1000.
     
     plt.rcParams['figure.figsize'] = [4,4]
-    g = sns.scatterplot(df.reset_index(), x='index', y='mean', color='darkorange')
+    g = sns.scatterplot(df.reset_index(), x='index', y='mean', color='darkorange', s=45)
     mean_radius = df['mean'].mean()
-    plt.axhline(y=mean_radius, linewidth=2, linestyle='--', color='k', alpha=0.8)
+    plt.axhline(y=mean_radius, linewidth=2, linestyle='--', color='darkorange', alpha=0.8)
     plt.xticks(np.arange(df.shape[0]), df.region, fontsize=fsize_tick, rotation=90, ha='center')
     plt.yticks(fontsize=fsize_tick)
     plt.xlabel("")
-    plt.ylabel('Mean "distance" of region (mm)', fontsize=fsize_label)
+    plt.ylabel('Mean intra-dist (mm)', fontsize=fsize_label)
 
-    plt.gca().text(16, mean_radius+1, f"average={mean_radius:.2f}", fontsize=10, style='italic')
-    plt.gca().xaxis.set_tick_params(width=2, direction='in')
-    plt.gca().yaxis.set_tick_params(width=2, direction='in')
-    plt.gca().spines['left'].set_linewidth(2)
-    plt.gca().spines['right'].set_linewidth(2)
-    plt.gca().spines['top'].set_linewidth(2)
-    plt.gca().spines['bottom'].set_linewidth(2)
-    plt.tight_layout()
+    ax = plt.gca()
+    ax.text(1.04, 0.5, f"average={mean_radius:.2f}",
+        horizontalalignment='center',
+        verticalalignment='center',
+        rotation=-90,
+        transform=ax.transAxes,
+        fontsize=12)
+    ax.xaxis.set_tick_params(width=2, direction='in')
+    ax.yaxis.set_tick_params(width=2, direction='in')
+    ax.spines['left'].set_linewidth(2)
+    ax.spines['right'].set_linewidth(2)
+    ax.spines['top'].set_linewidth(2)
+    ax.spines['bottom'].set_linewidth(2)
+
+    plt.subplots_adjust(bottom=0.15, left=0.15)
 
     plt.savefig('region_proj_size.png', dpi=300)
     plt.close('all')
@@ -249,12 +286,12 @@ if __name__ == '__main__':
     corr_file = './multi-scale/corr_neuronLevel_sdmatrix_heatmap_stype_all.csv'
     celltype_file = '../common_lib/41586_2021_3941_MOESM4_ESM.csv'
 
-    soma_dist_vs_corr(spos_file, corr_file)
-    proj_dist_vs_corr(proj_file, corr_file)
-    soma_proj_dist_vs_corr(spos_file, proj_file, corr_file)
+    #soma_dist_vs_corr(spos_file, corr_file)
+    #proj_dist_vs_corr(proj_file, corr_file)
+    #soma_proj_dist_vs_corr(spos_file, proj_file, corr_file)
     
     #estimate_region_size()
-    #estimate_region_projection_size(proj_file, celltype_file)
+    estimate_region_projection_size(proj_file, celltype_file)
     
 
 
