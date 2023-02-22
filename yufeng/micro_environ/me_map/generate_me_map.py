@@ -13,13 +13,18 @@
 import numpy as np
 import pandas as pd
 from skimage import exposure, filters, measure
+from skimage import morphology
+from scipy.interpolate import NearestNDInterpolator
 import matplotlib
 import matplotlib.cm as cm
 import cv2
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-from image_utils import get_mip_image
+from image_utils import get_mip_image, image_histeq
 from file_io import load_image, save_image
 from anatomy.anatomy_config import MASK_CCF25_FILE
+from anatomy.anatomy_vis import get_brain_outline2d, get_section_boundary_with_outline
 
 # features selected by mRMR
 __MAP_FEATS__ = ('AverageContraction', 'HausdorffDimension', 'pca_vr3')
@@ -38,128 +43,89 @@ def process_features(mefile):
     return df, feat_names
 
 def process_mip(img, mask2d, axis=0):
-    mip = get_mip_image(img, axis)
+    mip = get_mip_image(img, axis).astype(float)
     bg_mask = mip.sum(axis=-1) == 0
+    fg_mask = ~bg_mask
+    # do interpolation for filling
+    #for i in range(mip.shape[2]):
+    #    cur_mask = np.where(fg_mask)
+    #    interp = NearestNDInterpolator(np.transpose(cur_mask), mip[:,:,i][cur_mask])
+    #    mip[:,:,i] = interp(*np.indices(mip[:,:,i].shape))
+    
+    #nk = 2
+    #nk2 = 2*nk + 1
+    #mip = filters.median(mip, morphology.disk(nk).reshape((nk2,nk2,1)))
+    print(mip.mean(), mip.std())
     mip[bg_mask] = 255
-    mip[mask2d] = 0
+    mip[mask2d & bg_mask] = 192
+    mip = mip.astype(np.uint8)
     return mip
 
-def process_section(img, mask2d, axis=0):
-    if axis == 0:
-        mip = img[img.shape[0]//2]
-    elif axis == 1:
-        mip = img[:, img.shape[1]//2]
-    else:
-        mip = img[:, :, img.shape[2]//2]
-    bg_mask = mip.sum(axis=-1) == 0
-    mip[bg_mask] = 255
-    mip[mask2d] = 0
-    return mip
-
-def detect_edges(mask2d):
-    mask2d = mask2d.astype(np.float)
-    gx, gy = np.gradient(mask2d)
-    edges = (gy * gy + gx * gx) != 0
-    return edges
-
-def calc_me_maps(mefile, outfile):
+def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
     mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
     df, feat_names = process_features(mefile)
 
-    # get the mask of mip brain
-    mask_bin = mask > 0
-    mask2d0 = detect_edges(get_mip_image(mask_bin, 0))
-    mask2d1 = detect_edges(get_mip_image(mask_bin, 1))
-    mask2d2 = detect_edges(get_mip_image(mask_bin, 2))
-
     c = len(feat_names)
-    memap = np.zeros((c, *mask.shape), dtype=np.float)
+    zdim, ydim, xdim = mask.shape
+    zdim2, ydim2, xdim2 = zdim//2, ydim//2, xdim//2
+    memap = np.zeros((zdim, ydim, xdim, c), dtype=np.uint8)
     xyz = np.round(df[['soma_x', 'soma_y', 'soma_z']].to_numpy()).astype(np.int32)
+    # flip z-dimension, so that to aggregate the information to left or right hemisphere
+    right_hemi_mask = xyz[:,2] < zdim2
+    xyz[:,2][right_hemi_mask] = zdim - xyz[:,2][right_hemi_mask]
+
     # normalize to uint8
     fvalues = df[feat_names]
     fmin, fmax = fvalues.min(), fvalues.max()
-    fvalues = ((fvalues - fmin) / (fmax - fmin)).to_numpy()
-    memap[:, xyz[:,2], xyz[:,1], xyz[:,0]] = fvalues.transpose()
-    fg_mask = memap > 0
+    fvalues = ((fvalues - fmin) / (fmax - fmin) * 255).to_numpy()
+    if histeq:
+        for i in range(fvalues.shape[1]):
+            fvalues[:,i] = image_histeq(fvalues[:,i])[0]
     
-    # write out for visualization
-    #save_image(outfile, memap)
-    norm = matplotlib.colors.Normalize(0, 1, clip=True)
-    mapper = cm.ScalarMappable(norm=norm, cmap=cm.seismic_r)
-    for i, fn in enumerate(feat_names):
-        print(f'==> Saving {fn} map: {memap[i].shape}')
-        sx, sy, sz = memap[i].shape
-        cur_img = np.zeros((sx, sy, sz, 3), dtype=np.uint8)
-        #tmp = filters.gaussian(memap[i], 5)
-        eq_hist = exposure.equalize_hist(memap[i][fg_mask[i]])
-        rgb = (mapper.to_rgba(eq_hist)[:,:3] * 255).astype(np.uint8)
-        cur_img[fg_mask[i]] = rgb
-        
-        prefix = f'{outfile}_{fn}'
-        #save_image(f'{prefix}.tiff', cur_img)
-        mip0 = process_mip(cur_img, mask2d0, 0)
-        mip1 = process_mip(cur_img, mask2d1, 1)
-        mip2 = process_mip(cur_img, mask2d2, 2)
-        cv2.imwrite(f'{prefix}_mip0.png', mip0[:,:,::-1])
-        cv2.imwrite(f'{prefix}_mip1.png', mip1[:,:,::-1])
-        cv2.imwrite(f'{prefix}_mip2.png', mip2[:,:,::-1])
-    
-def calc_regional_maps(mefile, outfile):
-    mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
-    df, feat_names = process_features(mefile)
-    rnkey = 'region_name_r671'
-    rid_key = 'region_id_r671'
+    debug = False
+    if debug: #visualize the distribution of features
+        g = sns.histplot(data=fvalues, kde=True)
+        plt.savefig('fvalues_distr_histeq.png', dpi=300)
+        plt.close('all')
 
+    memap[xyz[:,2], xyz[:,1], xyz[:,0]] = fvalues
+    
     # get the mask of mip brain
-    mask_bin = mask > 0
-    mask2d0 = detect_edges(get_mip_image(mask_bin, 0))
-    mask2d1 = detect_edges(get_mip_image(mask_bin, 1))
-    mask2d2 = detect_edges(get_mip_image(mask_bin, 2))
+    sectionX = None
+    mask2ds = []
+    for axid in range(3):
+        if show_region_boundary:
+            mask2d = get_section_boundary_with_outline(mask, axis=axid, v=1, sectionX=sectionX, fuse=True)
+        else:
+            mask2d = get_brain_outline2d(mask, axis=axid, v=1)
+        mask2ds.append(mask2d)
 
-    # regional wide median
-    dfr = df.groupby(rnkey).median()
-
-    c = len(feat_names)
-    memap = np.zeros((*mask.shape, c, 3), dtype=np.uint8)
-    # normalize to uint8
-    fvalues = dfr[feat_names]
-    fmin, fmax = fvalues.min(), fvalues.max()
-    fvalues = ((fvalues - fmin) / (fmax - fmin)).to_numpy()
-
-    # color mapper
-    norm = matplotlib.colors.Normalize(0, 1, clip=True)
-    mapper = cm.ScalarMappable(norm=norm, cmap=cm.seismic_r)
-    mapv = []
-    for i in range(fvalues.shape[1]):
-        eq_hist = exposure.equalize_hist(fvalues[:, i])
-        rgb = (mapper.to_rgba(eq_hist)[:,:3]*255).astype(np.uint8)
-        mapv.append(rgb)
-    mapv = np.array(mapv).swapaxes(0,1)
-
-    for idx, rid, rname in zip(range(dfr.shape[0]), dfr[rid_key], dfr.index):
-        rid = int(rid)
-        mask_i = mask == rid
-        memap[mask_i] = mapv[idx]
-        print(f'--> {idx}: Region: {rid}, {rname}, {mask_i.sum()}, {mapv[idx][0]}')
-    
-    for i, fn in enumerate(feat_names):
-        print(f'Saving image for {fn}')
-        cur_img = memap[:,:,:,i]
+    # keep only values near the section plane
+    thickX2 = 40
+    prefix = f'{outfile}'
+    for axid in range(3):
+        print(f'--> Processing axis: {axid}')
+        cur_memap = memap.copy()
+        print(cur_memap.mean(), cur_memap.std())
+        if axid == 0:
+            cur_memap[:zdim2-thickX2] = 0
+            cur_memap[zdim2+thickX2:] = 0
+        elif axid == 1:
+            cur_memap[:,:ydim2-thickX2] = 0
+            cur_memap[:ydim2+thickX2:] = 0
+        else:
+            cur_memap[:,:,:xdim2-thickX2] = 0
+            cur_memap[:,:,xdim2+thickX2:] = 0
+        print(cur_memap.mean(), cur_memap.std())
         
-        prefix = f'{outfile}_{fn}'
-        #save_image(f'{prefix}.tiff', cur_img)
-        mip0 = process_section(cur_img, mask2d0, 0)
-        mip1 = process_section(cur_img, mask2d1, 1)
-        mip2 = process_section(cur_img, mask2d2, 2)
-        cv2.imwrite(f'{prefix}_mip0.png', mip0[:,:,::-1])
-        cv2.imwrite(f'{prefix}_mip1.png', mip1[:,:,::-1])
-        cv2.imwrite(f'{prefix}_mip2.png', mip2[:,:,::-1])
-        
-
+        mip = process_mip(cur_memap, mask2ds[axid], axid)
+        cv2.imwrite(f'{prefix}_mip{axid}.png', mip[:,:,::-1])
     
+
+
 if __name__ == '__main__':
     mefile = './data/micro_env_features_nodes300-1500_withoutNorm.csv'
     mapfile = 'microenviron_map'
 
-    calc_regional_maps(mefile, outfile=mapfile)
+    calc_me_maps(mefile, outfile=mapfile)
 
