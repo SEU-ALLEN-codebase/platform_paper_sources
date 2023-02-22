@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from skimage import exposure, filters, measure
 from skimage import morphology
-from scipy.interpolate import NearestNDInterpolator
+from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator, CloughTocher2DInterpolator
 import matplotlib
 import matplotlib.cm as cm
 import cv2
@@ -47,17 +47,22 @@ def process_mip(img, mask2d, axis=0):
     bg_mask = mip.sum(axis=-1) == 0
     fg_mask = ~bg_mask
     # do interpolation for filling
-    #for i in range(mip.shape[2]):
-    #    cur_mask = np.where(fg_mask)
-    #    interp = NearestNDInterpolator(np.transpose(cur_mask), mip[:,:,i][cur_mask])
-    #    mip[:,:,i] = interp(*np.indices(mip[:,:,i].shape))
+    for i in range(mip.shape[2]):
+        cur_mask = np.where(fg_mask)
+        interp = NearestNDInterpolator(np.transpose(cur_mask), mip[:,:,i][cur_mask])
+        #interp = LinearNDInterpolator(np.transpose(cur_mask), mip[:,:,i][cur_mask])
+        mip[:,:,i] = interp(*np.indices(mip[:,:,i].shape))
     
-    #nk = 2
+    #nk = 3
     #nk2 = 2*nk + 1
     #mip = filters.median(mip, morphology.disk(nk).reshape((nk2,nk2,1)))
-    print(mip.mean(), mip.std())
-    mip[bg_mask] = 255
-    mip[mask2d & bg_mask] = 192
+    
+    # zeroing out non-fg regions
+    dil_mask = morphology.dilation(fg_mask, morphology.disk(5))
+
+    #mip[bg_mask] = 255
+    mip[~dil_mask] = 255
+    mip[mask2d & bg_mask] = 128
     mip = mip.astype(np.uint8)
     return mip
 
