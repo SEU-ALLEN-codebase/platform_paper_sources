@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from image_utils import get_mip_image, image_histeq
 from file_io import load_image, save_image
 from anatomy.anatomy_config import MASK_CCF25_FILE
-from anatomy.anatomy_vis import get_brain_outline2d, get_section_boundary_with_outline
+from anatomy.anatomy_vis import get_brain_outline2d, get_section_boundary_with_outline, get_brain_mask2d
 
 # features selected by mRMR
 __MAP_FEATS__ = ('AverageContraction', 'HausdorffDimension', 'pca_vr3')
@@ -43,11 +43,13 @@ def process_features(mefile):
 
     return df, feat_names
 
-def process_mip(img, mask2d, axis=0, figname='temp.png'):
+def process_mip(img, outline_mask2d, brain_mask2d, axis=0, figname='temp.png'):
     mip = get_mip_image(img, axis)
+    #if axis==1: cv2.imwrite('temp.png', mip); sys.exit()
     # redraw the image through different point style
-    im = np.ones((mip.shape[0], mip.shape[1], 4), dtype=np.uint8) * 255; 
-    #im = mip.copy(); im.fill(255)
+    im = np.ones((mip.shape[0], mip.shape[1], 4), dtype=np.uint8) * 255
+    im[~brain_mask2d] = 1
+    
     fig, ax = plt.subplots()
     width, height = fig.get_size_inches() * fig.get_dpi()
     width = int(width)
@@ -64,7 +66,7 @@ def process_mip(img, mask2d, axis=0, figname='temp.png'):
     fg_values = mip[fg_indices] / 255.
     ax.scatter(fg_indices[1], fg_indices[0], c=fg_values, s=5, edgecolors='none')
     # show boundary
-    b_indices = np.where(mask2d)
+    b_indices = np.where(outline_mask2d)
     ax.scatter(b_indices[1], b_indices[0], s=0.5, c='black', alpha=0.5, edgecolors='none')
 
     plt.savefig(figname, dpi=300)
@@ -75,7 +77,7 @@ def process_mip(img, mask2d, axis=0, figname='temp.png'):
     #out = np.frombuffer(img_buffer, dtype=np.uint8).reshape(height, width, 3)
     #return out
 
-def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
+def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True, flip_to_left=True):
     mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
     df, feat_names = process_features(mefile)
 
@@ -84,9 +86,10 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
     zdim2, ydim2, xdim2 = zdim//2, ydim//2, xdim//2
     memap = np.zeros((zdim, ydim, xdim, c), dtype=np.uint8)
     xyz = np.round(df[['soma_x', 'soma_y', 'soma_z']].to_numpy()).astype(np.int32)
-    # flip z-dimension, so that to aggregate the information to left or right hemisphere
-    right_hemi_mask = xyz[:,2] < zdim2
-    xyz[:,2][right_hemi_mask] = zdim - xyz[:,2][right_hemi_mask]
+    if flip_to_left:
+        # flip z-dimension, so that to aggregate the information to left or right hemisphere
+        right_hemi_mask = xyz[:,2] < zdim2
+        xyz[:,2][right_hemi_mask] = zdim - xyz[:,2][right_hemi_mask]
 
     # normalize to uint8
     fvalues = df[feat_names]
@@ -106,13 +109,15 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
     
     # get the mask of mip brain
     sectionX = None
-    mask2ds = []
+    outline_mask2ds = []
+    brain_mask2ds = []
     for axid in range(3):
         if show_region_boundary:
-            mask2d = get_section_boundary_with_outline(mask, axis=axid, v=1, sectionX=sectionX, fuse=True)
+            outline_mask2d = get_section_boundary_with_outline(mask, axis=axid, v=1, sectionX=sectionX, fuse=True)
         else:
-            mask2d = get_brain_outline2d(mask, axis=axid, v=1)
-        mask2ds.append(mask2d)
+            outline_mask2d = get_brain_outline2d(mask, axis=axid, v=1)
+        outline_mask2ds.append(outline_mask2d)
+        brain_mask2ds.append(get_brain_mask2d(mask, axis=axid, v=1))
 
     # keep only values near the section plane
     thickX2 = 40
@@ -121,19 +126,20 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
         print(f'--> Processing axis: {axid}')
         cur_memap = memap.copy()
         print(cur_memap.mean(), cur_memap.std())
-        if axid == 0:
-            cur_memap[:zdim2-thickX2] = 0
-            cur_memap[zdim2+thickX2:] = 0
-        elif axid == 1:
-            cur_memap[:,:ydim2-thickX2] = 0
-            cur_memap[:ydim2+thickX2:] = 0
-        else:
-            cur_memap[:,:,:xdim2-thickX2] = 0
-            cur_memap[:,:,xdim2+thickX2:] = 0
+        if thickX2 != -1:
+            if axid == 0:
+                cur_memap[:zdim2-thickX2] = 0
+                cur_memap[zdim2+thickX2:] = 0
+            elif axid == 1:
+                cur_memap[:,:ydim2-thickX2] = 0
+                cur_memap[:,ydim2+thickX2:] = 0
+            else:
+                cur_memap[:,:,:xdim2-thickX2] = 0
+                cur_memap[:,:,xdim2+thickX2:] = 0
         print(cur_memap.mean(), cur_memap.std())
         
         figname = f'{prefix}_mip{axid}.png'
-        mip = process_mip(cur_memap, mask2ds[axid], axid, figname)
+        mip = process_mip(cur_memap, outline_mask2ds[axid], brain_mask2ds[axid], axid, figname)
         # load and remove the zero-alpha block
         img = cv2.imread(figname, cv2.IMREAD_UNCHANGED)
         wnz = np.nonzero(img[img.shape[0]//2,:,-1])[0]
@@ -141,8 +147,10 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
         hnz = np.nonzero(img[:,img.shape[1]//2,-1])[0]
         hs, he = hnz[0], hnz[-1]
         img = img[hs:he+1, ws:we+1]
-        if axid == 2:   # rotate 90
+        if axid in [1,2]:   # rotate 90
             img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        # set the alpha of non-brain region as 0
+        img[img[:,:,-1] == 1] = 0
         cv2.imwrite(figname, img)
         
 
@@ -150,6 +158,7 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
 if __name__ == '__main__':
     mefile = './data/micro_env_features_nodes300-1500_withoutNorm.csv'
     mapfile = 'microenviron_map'
+    flip_to_left = True
 
-    calc_me_maps(mefile, outfile=mapfile)
+    calc_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left)
 
