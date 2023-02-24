@@ -14,9 +14,10 @@ import numpy as np
 import pandas as pd
 from skimage import exposure, filters, measure
 from skimage import morphology
-from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator, CloughTocher2DInterpolator
+from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
 import matplotlib
 import matplotlib.cm as cm
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import cv2
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -42,29 +43,36 @@ def process_features(mefile):
 
     return df, feat_names
 
-def process_mip(img, mask2d, axis=0):
-    mip = get_mip_image(img, axis).astype(float)
+def process_mip(img, mask2d, axis=0, figname='temp.png'):
+    mip = get_mip_image(img, axis)
+    # redraw the image through different point style
+    im = mip.copy(); im.fill(0)
+    fig, ax = plt.subplots()
+    width, height = fig.get_size_inches() * fig.get_dpi()
+    width = int(width)
+    height = int(height)
+
+    canvas = FigureCanvas(fig)
+    im = ax.imshow(im)
+    fig.patch.set_visible(False)
+    ax.axis('off')
+    
     bg_mask = mip.sum(axis=-1) == 0
     fg_mask = ~bg_mask
-    # do interpolation for filling
-    for i in range(mip.shape[2]):
-        cur_mask = np.where(fg_mask)
-        interp = NearestNDInterpolator(np.transpose(cur_mask), mip[:,:,i][cur_mask])
-        #interp = LinearNDInterpolator(np.transpose(cur_mask), mip[:,:,i][cur_mask])
-        mip[:,:,i] = interp(*np.indices(mip[:,:,i].shape))
-    
-    #nk = 3
-    #nk2 = 2*nk + 1
-    #mip = filters.median(mip, morphology.disk(nk).reshape((nk2,nk2,1)))
-    
-    # zeroing out non-fg regions
-    dil_mask = morphology.dilation(fg_mask, morphology.disk(5))
+    fg_indices = np.where(fg_mask)
+    fg_values = mip[fg_indices] / 255.
+    ax.scatter(fg_indices[1], fg_indices[0], c=fg_values, s=5, edgecolors='none')
+    # show boundary
+    b_indices = np.where(mask2d)
+    ax.scatter(b_indices[1], b_indices[0], s=0.5, c='white', alpha=0.5, edgecolors='none')
 
-    #mip[bg_mask] = 255
-    mip[~dil_mask] = 255
-    mip[mask2d & bg_mask] = 128
-    mip = mip.astype(np.uint8)
-    return mip
+    plt.savefig(figname, dpi=300)
+    plt.close('all')
+
+    #canvas.draw()       # draw the canvas, cache the renderer
+    #img_buffer = canvas.tostring_rgb()
+    #out = np.frombuffer(img_buffer, dtype=np.uint8).reshape(height, width, 3)
+    #return out
 
 def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
     mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
@@ -123,9 +131,9 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
             cur_memap[:,:,xdim2+thickX2:] = 0
         print(cur_memap.mean(), cur_memap.std())
         
-        mip = process_mip(cur_memap, mask2ds[axid], axid)
-        cv2.imwrite(f'{prefix}_mip{axid}.png', mip[:,:,::-1])
-    
+        mip = process_mip(cur_memap, mask2ds[axid], axid, figname=f'{prefix}_mip{axid}.png')
+        #cv2.imwrite(f'{prefix}_mip{axid}.png', mip[:,:,::-1])
+        
 
 
 if __name__ == '__main__':
