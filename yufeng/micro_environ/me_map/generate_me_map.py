@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from image_utils import get_mip_image, image_histeq
 from file_io import load_image, save_image
 from anatomy.anatomy_config import MASK_CCF25_FILE
-from anatomy.anatomy_vis import get_brain_outline2d, get_section_boundary_with_outline, get_brain_mask2d
+from anatomy.anatomy_vis import get_brain_outline2d, get_section_boundary_with_outline, get_brain_mask2d, get_section_boundary
 
 # features selected by mRMR
 __MAP_FEATS__ = ('AverageContraction', 'HausdorffDimension', 'pca_vr3')
@@ -43,7 +43,7 @@ def process_features(mefile):
 
     return df, feat_names
 
-def process_mip(img, outline_mask2d, brain_mask2d, axis=0, figname='temp.png'):
+def process_mip(img, boundary_mask2d, outline_mask2d, brain_mask2d, axis=0, figname='temp.png', mode='composite'):
     mip = get_mip_image(img, axis)
     #if axis==1: cv2.imwrite('temp.png', mip); sys.exit()
     # redraw the image through different point style
@@ -63,11 +63,19 @@ def process_mip(img, outline_mask2d, brain_mask2d, axis=0, figname='temp.png'):
     bg_mask = mip.sum(axis=-1) == 0
     fg_mask = ~bg_mask
     fg_indices = np.where(fg_mask)
-    fg_values = mip[fg_indices] / 255.
-    ax.scatter(fg_indices[1], fg_indices[0], c=fg_values, s=5, edgecolors='none')
+    if mode == 'composite':
+        fg_values = mip[fg_indices] / 255.
+        cmap = None
+    else:
+        fg_values = mip[fg_indices][:,0] / 255.
+        cmap = 'coolwarm'
+    
+    ax.scatter(fg_indices[1], fg_indices[0], c=fg_values, s=5, edgecolors='none', cmap=cmap)
     # show boundary
-    b_indices = np.where(outline_mask2d)
+    b_indices = np.where(boundary_mask2d)
     ax.scatter(b_indices[1], b_indices[0], s=0.5, c='black', alpha=0.5, edgecolors='none')
+    o_indices = np.where(outline_mask2d)
+    ax.scatter(o_indices[1], o_indices[0], s=1.0, c='orange', alpha=1.0, edgecolors='none')
 
     plt.savefig(figname, dpi=300)
     plt.close('all')
@@ -77,7 +85,22 @@ def process_mip(img, outline_mask2d, brain_mask2d, axis=0, figname='temp.png'):
     #out = np.frombuffer(img_buffer, dtype=np.uint8).reshape(height, width, 3)
     #return out
 
-def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True, flip_to_left=True):
+def calc_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composite', findex=0):
+    '''
+    @param mefile:          file containing microenviron features
+    @param outfile:         prefix of output file
+    @param histeq:          Whether or not to use histeq to equalize the feature values
+    @param flip_to_left:    whether map points at the right hemisphere to left hemisphere
+    @param mode:            [composite]: show 3 features; otherwise separate feature
+    @param findex:          index of feature to display
+    '''
+
+    if mode != 'composite':
+        fname = __MAP_FEATS__[findex]
+        prefix = f'{outfile}_{fname}'
+    else:
+        prefix = f'{outfile}'
+
     mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
     df, feat_names = process_features(mefile)
 
@@ -105,23 +128,23 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True, flip_t
         plt.savefig('fvalues_distr_histeq.png', dpi=300)
         plt.close('all')
 
-    memap[xyz[:,2], xyz[:,1], xyz[:,0]] = fvalues
+    if mode == 'composite':
+        memap[xyz[:,2], xyz[:,1], xyz[:,0]] = fvalues
+    else:
+        memap[xyz[:,2], xyz[:,1], xyz[:,0]] = fvalues[:,findex].reshape(-1,1)
     
     # get the mask of mip brain
     sectionX = None
+    boundary_mask2ds = []
     outline_mask2ds = []
     brain_mask2ds = []
     for axid in range(3):
-        if show_region_boundary:
-            outline_mask2d = get_section_boundary_with_outline(mask, axis=axid, v=1, sectionX=sectionX, fuse=True)
-        else:
-            outline_mask2d = get_brain_outline2d(mask, axis=axid, v=1)
-        outline_mask2ds.append(outline_mask2d)
+        boundary_mask2ds.append(get_section_boundary(mask, axis=axid, v=1, c=sectionX))
+        outline_mask2ds.append(get_brain_outline2d(mask, axis=axid, v=1))
         brain_mask2ds.append(get_brain_mask2d(mask, axis=axid, v=1))
 
     # keep only values near the section plane
     thickX2 = 40
-    prefix = f'{outfile}'
     for axid in range(3):
         print(f'--> Processing axis: {axid}')
         cur_memap = memap.copy()
@@ -139,7 +162,7 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True, flip_t
         print(cur_memap.mean(), cur_memap.std())
         
         figname = f'{prefix}_mip{axid}.png'
-        mip = process_mip(cur_memap, outline_mask2ds[axid], brain_mask2ds[axid], axid, figname)
+        mip = process_mip(cur_memap, boundary_mask2ds[axid], outline_mask2ds[axid], brain_mask2ds[axid], axid, figname, mode=mode)
         # load and remove the zero-alpha block
         img = cv2.imread(figname, cv2.IMREAD_UNCHANGED)
         wnz = np.nonzero(img[img.shape[0]//2,:,-1])[0]
@@ -147,7 +170,7 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True, flip_t
         hnz = np.nonzero(img[:,img.shape[1]//2,-1])[0]
         hs, he = hnz[0], hnz[-1]
         img = img[hs:he+1, ws:we+1]
-        if axid in [1,2]:   # rotate 90
+        if axid == 2:   # rotate 90
             img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
         # set the alpha of non-brain region as 0
         img[img[:,:,-1] == 1] = 0
@@ -159,6 +182,8 @@ if __name__ == '__main__':
     mefile = './data/micro_env_features_nodes300-1500_withoutNorm.csv'
     mapfile = 'microenviron_map'
     flip_to_left = True
+    mode = 'feature'
+    findex = 0
 
-    calc_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left)
+    calc_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
 
