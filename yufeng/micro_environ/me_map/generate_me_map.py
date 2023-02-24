@@ -46,7 +46,8 @@ def process_features(mefile):
 def process_mip(img, mask2d, axis=0, figname='temp.png'):
     mip = get_mip_image(img, axis)
     # redraw the image through different point style
-    im = mip.copy(); im.fill(0)
+    im = np.ones((mip.shape[0], mip.shape[1], 4), dtype=np.uint8) * 255; 
+    #im = mip.copy(); im.fill(255)
     fig, ax = plt.subplots()
     width, height = fig.get_size_inches() * fig.get_dpi()
     width = int(width)
@@ -64,7 +65,7 @@ def process_mip(img, mask2d, axis=0, figname='temp.png'):
     ax.scatter(fg_indices[1], fg_indices[0], c=fg_values, s=5, edgecolors='none')
     # show boundary
     b_indices = np.where(mask2d)
-    ax.scatter(b_indices[1], b_indices[0], s=0.5, c='white', alpha=0.5, edgecolors='none')
+    ax.scatter(b_indices[1], b_indices[0], s=0.5, c='black', alpha=0.5, edgecolors='none')
 
     plt.savefig(figname, dpi=300)
     plt.close('all')
@@ -131,8 +132,18 @@ def calc_me_maps(mefile, outfile, show_region_boundary=True, histeq=True):
             cur_memap[:,:,xdim2+thickX2:] = 0
         print(cur_memap.mean(), cur_memap.std())
         
-        mip = process_mip(cur_memap, mask2ds[axid], axid, figname=f'{prefix}_mip{axid}.png')
-        #cv2.imwrite(f'{prefix}_mip{axid}.png', mip[:,:,::-1])
+        figname = f'{prefix}_mip{axid}.png'
+        mip = process_mip(cur_memap, mask2ds[axid], axid, figname)
+        # load and remove the zero-alpha block
+        img = cv2.imread(figname, cv2.IMREAD_UNCHANGED)
+        wnz = np.nonzero(img[img.shape[0]//2,:,-1])[0]
+        ws, we = wnz[0], wnz[-1]
+        hnz = np.nonzero(img[:,img.shape[1]//2,-1])[0]
+        hs, he = hnz[0], hnz[-1]
+        img = img[hs:he+1, ws:we+1]
+        if axid == 2:   # rotate 90
+            img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        cv2.imwrite(figname, img)
         
 
 
