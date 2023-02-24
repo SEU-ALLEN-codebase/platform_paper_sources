@@ -182,7 +182,7 @@ if __name__ == '__main__':
     mefile = './data/micro_env_features_nodes300-1500_withoutNorm.csv'
     mapfile = 'microenviron_map'
     flip_to_left = True
-    mode = 'feature'
+    mode = 'composite'
     findex = 0
 
     calc_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
