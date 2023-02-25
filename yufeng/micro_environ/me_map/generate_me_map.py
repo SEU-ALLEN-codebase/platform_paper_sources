@@ -43,10 +43,37 @@ def process_features(mefile):
 
     return df, feat_names
 
-def process_mip(img, boundary_mask2d, outline_mask2d, brain_mask2d, axis=0, figname='temp.png', mode='composite'):
+def plot_section_outline(mask, axis=0, sectionX=None, ax=None, with_outline=True, outline_color='orange'):
+    boundary_mask2d = get_section_boundary(mask, axis=axis, v=1, c=sectionX)
+    sh, sw = boundary_mask2d.shape[:2]
+    if ax is None:
+        fig, ax = plt.subplots()
+        brain_mask2d = get_brain_mask2d(mask, axis=axis, v=1)
+        im = np.ones((sh, sw, 4), dtype=np.uint8) * 255
+        im[~brain_mask2d] = 1
+
+    # show boundary
+    b_indices = np.where(boundary_mask2d)
+    ax.scatter(b_indices[1], b_indices[0], s=0.5, c='black', alpha=0.5, edgecolors='none')
+    # intra-brain regions
+        
+    if with_outline:
+        outline_mask2d = get_brain_outline2d(mask, axis=axis, v=1)
+        o_indices = np.where(outline_mask2d)
+        ax.scatter(o_indices[1], o_indices[0], s=1.0, c=outline_color, alpha=1.0, edgecolors='none')
+    
+    if ax is None:
+        return fig, ax
+    else:
+        return ax
+    
+
+def process_mip(img, mask, sectionX=None, axis=0, figname='temp.png', mode='composite'):
+    # get the mask
+    brain_mask2d = get_brain_mask2d(mask, axis=axis, v=1)
+
     mip = get_mip_image(img, axis)
     #if axis==1: cv2.imwrite('temp.png', mip); sys.exit()
-    # redraw the image through different point style
     im = np.ones((mip.shape[0], mip.shape[1], 4), dtype=np.uint8) * 255
     im[~brain_mask2d] = 1
     
@@ -71,11 +98,7 @@ def process_mip(img, boundary_mask2d, outline_mask2d, brain_mask2d, axis=0, fign
         cmap = 'coolwarm'
     
     ax.scatter(fg_indices[1], fg_indices[0], c=fg_values, s=5, edgecolors='none', cmap=cmap)
-    # show boundary
-    b_indices = np.where(boundary_mask2d)
-    ax.scatter(b_indices[1], b_indices[0], s=0.5, c='black', alpha=0.5, edgecolors='none')
-    o_indices = np.where(outline_mask2d)
-    ax.scatter(o_indices[1], o_indices[0], s=1.0, c='orange', alpha=1.0, edgecolors='none')
+    plot_section_outline(mask, axis=axis, sectionX=sectionX, ax=ax, with_outline=True, outline_color='orange')
 
     plt.savefig(figname, dpi=300)
     plt.close('all')
@@ -133,16 +156,6 @@ def calc_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composit
     else:
         memap[xyz[:,2], xyz[:,1], xyz[:,0]] = fvalues[:,findex].reshape(-1,1)
     
-    # get the mask of mip brain
-    sectionX = None
-    boundary_mask2ds = []
-    outline_mask2ds = []
-    brain_mask2ds = []
-    for axid in range(3):
-        boundary_mask2ds.append(get_section_boundary(mask, axis=axid, v=1, c=sectionX))
-        outline_mask2ds.append(get_brain_outline2d(mask, axis=axid, v=1))
-        brain_mask2ds.append(get_brain_mask2d(mask, axis=axid, v=1))
-
     # keep only values near the section plane
     thickX2 = 40
     for axid in range(3):
@@ -162,7 +175,7 @@ def calc_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composit
         print(cur_memap.mean(), cur_memap.std())
         
         figname = f'{prefix}_mip{axid}.png'
-        mip = process_mip(cur_memap, boundary_mask2ds[axid], outline_mask2ds[axid], brain_mask2ds[axid], axid, figname, mode=mode)
+        mip = process_mip(cur_memap, mask, axis=axid, figname=figname, mode=mode)
         # load and remove the zero-alpha block
         img = cv2.imread(figname, cv2.IMREAD_UNCHANGED)
         wnz = np.nonzero(img[img.shape[0]//2,:,-1])[0]
