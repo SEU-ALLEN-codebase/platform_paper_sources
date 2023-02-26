@@ -27,6 +27,7 @@ from image_utils import get_mip_image, image_histeq
 from file_io import load_image, save_image
 from anatomy.anatomy_config import MASK_CCF25_FILE
 from anatomy.anatomy_vis import get_brain_outline2d, get_section_boundary_with_outline, get_brain_mask2d, get_section_boundary
+from anatomy.anatomy_core import parse_ana_tree
 
 # features selected by mRMR
 __MAP_FEATS__ = ('AverageContraction', 'HausdorffDimension', 'pca_vr3')
@@ -191,7 +192,7 @@ def generate_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='comp
         hnz = np.nonzero(img[:,img.shape[1]//2,-1])[0]
         hs, he = hnz[0], hnz[-1]
         img = img[hs:he+1, ws:we+1]
-        if axid == 2:   # rotate 90
+        if axid != 0:   # rotate 90
             img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
         # set the alpha of non-brain region as 0
         img[img[:,:,-1] == 1] = 0
@@ -211,12 +212,13 @@ def plot_left_right_corr(mefile, outfile, histeq=True, mode='composite', findex=
         # we should use `y = ax` to fit our data.
         ax = plt.gca()
         popt, pcov = curve_fit(customized_func, xkey, ykey)
-        print(popt, pcov)
-        xdata = np.arange(0, 255)
+        xmin = min(xkey.min(), ykey.min())
+        xmax = max(xkey.max(), ykey.max())
+        xdata = np.arange(xmin, xmax)
         ydata = popt[0] * xdata
         ax.plot(xdata, ydata, linewidth=3, color=color, label=label)
         # annotate
-        ax.text(.05, .8, f'y={popt[0]:.2f}x\npcov={pcov[0][0]:.2g}', 
+        ax.text(.03, .85, f'y={popt[0]:.2f}x\npcov={pcov[0][0]:.2g}', 
                 fontsize=20, transform=ax.transAxes, color=color)
 
     
@@ -283,7 +285,76 @@ def plot_left_right_corr(mefile, outfile, histeq=True, mode='composite', findex=
     plt.savefig(figname, dpi=300)
     plt.close('all')
         
+def colorize_atlas2d_cv2(outscale=3, annot=False):
+    mask = load_image(MASK_CCF25_FILE)
+    ana_dict = parse_ana_tree()
+    for axid in range(3):
+        boundaries = get_section_boundary(mask, axis=axid, c=None, v=1)
+        c = mask.shape[axid] // 2
+        section = np.take(mask, c, axid)
+        out = np.ones((*section.shape, 3), dtype=np.uint8) * 255
+        values = np.unique(section)
+        print(f'Dimension of axis={axid} is: {section.shape}, with {len(values)-1} regions')
+
+        if annot:
+            centers = []
+            rnames = []
+            c2 = out.shape[0] // 2
+            right_mask = boundaries.copy()
+            right_mask.fill(False)
+            right_mask[:c2] = True
+            for v in values:
+                if v == 0: continue
+                rname = ana_dict[v]['acronym']
+                
+                # center of regions, 
+                cur_mask = section == v
+                out[:,:,:3][cur_mask] = ana_dict[v]['rgb_triplet']
+
+                if rname in ['root', 'fiber tracts']:   # no texting is necessary
+                    continue
+                if axid != 0:   
+                    cur_mask = cur_mask & right_mask #only left hemisphere
+                cc = cv2.connectedComponents(cur_mask.astype(np.uint8))
+                for i in range(cc[0] - 1):
+                    cur_mask = cc[1] == (i+1)
+                    if cur_mask.sum() < 50:
+                        continue
+                    indices = np.where(cur_mask)
+                    xmean = (indices[0].min() + indices[0].max()) // 2
+                    ymean = int(np.median(indices[1][indices[0] == xmean]))
+                    centers.append((xmean, ymean))
+                    rnames.append(rname)
+        else:
+            for v in values:
+                if v == 0: continue
+                cur_mask = section == v
+                out[:,:,:3][cur_mask] = ana_dict[v]['rgb_triplet']
+        # mixing with boudnary
+        alpha = 0.5
+        out[:,:,:3][boundaries] = (255 * alpha + out[boundaries][:,:3] * (1 - alpha)).astype(np.uint8)
+        #out[:,:,3][boundaries] = int(alpha * 255)
         
+        figname = f'atlas_axis{axid}.png'
+        if outscale != 1:
+            out = cv2.resize(out, (0,0), fx=outscale, fy=outscale, interpolation=cv2.INTER_CUBIC)
+        # we would like to rotate the image, so that it can be better visualized
+        if axid != 0:
+            out = cv2.rotate(out, cv2.ROTATE_90_CLOCKWISE)
+
+        so1, so2 = out.shape[:2]
+        # annotation if required
+        if annot:
+            figname = f'atlas_axis{axid}_annot.png'
+            for center, rn in zip(centers, rnames):
+                sx, sy = center[1]*outscale, center[0]*outscale
+                if axid != 0:
+                    # rotate accordingly
+                    new_center = (so2-sy, sx)
+                else:
+                    new_center = (sx, sy)
+                cv2.putText(out, rn, new_center, cv2.FONT_HERSHEY_DUPLEX, 0.5, (0,0,0), 1)
+        cv2.imwrite(figname, out)
 
 
 if __name__ == '__main__':
@@ -294,5 +365,6 @@ if __name__ == '__main__':
     findex = 0
 
     #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
-    plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
+    #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
+    colorize_atlas2d_cv2(annot=False)
 
