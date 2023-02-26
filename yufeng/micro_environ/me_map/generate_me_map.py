@@ -164,7 +164,7 @@ def get_me_mips(mefile, shape3d, histeq, flip_to_left, mode, findex):
         mips.append(mip)
     return mips
 
-def generate_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composite', findex=0):
+def generate_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composite', findex=0, fmt='svg'):
     '''
     @param mefile:          file containing microenviron features
     @param outfile:         prefix of output file
@@ -183,20 +183,21 @@ def generate_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='comp
     shape3d = mask.shape
     mips = get_me_mips(mefile, shape3d, histeq, flip_to_left, mode, findex)
     for axid, mip in enumerate(mips):
-        figname = f'{prefix}_mip{axid}.png'
+        figname = f'{prefix}_mip{axid}.{fmt}'
         process_mip(mip, mask, axis=axid, figname=figname, mode=mode)
-        # load and remove the zero-alpha block
-        img = cv2.imread(figname, cv2.IMREAD_UNCHANGED)
-        wnz = np.nonzero(img[img.shape[0]//2,:,-1])[0]
-        ws, we = wnz[0], wnz[-1]
-        hnz = np.nonzero(img[:,img.shape[1]//2,-1])[0]
-        hs, he = hnz[0], hnz[-1]
-        img = img[hs:he+1, ws:we+1]
-        if axid != 0:   # rotate 90
-            img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-        # set the alpha of non-brain region as 0
-        img[img[:,:,-1] == 1] = 0
-        cv2.imwrite(figname, img)
+        if not figname.endswith('svg'):
+            # load and remove the zero-alpha block
+            img = cv2.imread(figname, cv2.IMREAD_UNCHANGED)
+            wnz = np.nonzero(img[img.shape[0]//2,:,-1])[0]
+            ws, we = wnz[0], wnz[-1]
+            hnz = np.nonzero(img[:,img.shape[1]//2,-1])[0]
+            hs, he = hnz[0], hnz[-1]
+            img = img[hs:he+1, ws:we+1]
+            if axid != 0:   # rotate 90
+                img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+            # set the alpha of non-brain region as 0
+            img[img[:,:,-1] == 1] = 0
+            cv2.imwrite(figname, img)
         
 def plot_left_right_corr(mefile, outfile, histeq=True, mode='composite', findex=0):
     if mode != 'composite':
@@ -285,7 +286,7 @@ def plot_left_right_corr(mefile, outfile, histeq=True, mode='composite', findex=
     plt.savefig(figname, dpi=300)
     plt.close('all')
         
-def colorize_atlas2d_cv2(outscale=3, annot=False):
+def colorize_atlas2d_cv2(outscale=3, annot=False, fmt='svg'):
     mask = load_image(MASK_CCF25_FILE)
     ana_dict = parse_ana_tree()
     for axid in range(3):
@@ -335,7 +336,7 @@ def colorize_atlas2d_cv2(outscale=3, annot=False):
         out[:,:,:3][boundaries] = (255 * alpha + out[boundaries][:,:3] * (1 - alpha)).astype(np.uint8)
         #out[:,:,3][boundaries] = int(alpha * 255)
         
-        figname = f'atlas_axis{axid}.png'
+        figname = f'atlas_axis{axid}.{fmt}'
         if outscale != 1:
             out = cv2.resize(out, (0,0), fx=outscale, fy=outscale, interpolation=cv2.INTER_CUBIC)
         # we would like to rotate the image, so that it can be better visualized
@@ -345,7 +346,7 @@ def colorize_atlas2d_cv2(outscale=3, annot=False):
         so1, so2 = out.shape[:2]
         # annotation if required
         if annot:
-            figname = f'atlas_axis{axid}_annot.png'
+            figname = f'atlas_axis{axid}_annot.{fmt}'
             for center, rn in zip(centers, rnames):
                 sx, sy = center[1]*outscale, center[0]*outscale
                 if axid != 0:
@@ -354,7 +355,17 @@ def colorize_atlas2d_cv2(outscale=3, annot=False):
                 else:
                     new_center = (sx, sy)
                 cv2.putText(out, rn, new_center, cv2.FONT_HERSHEY_DUPLEX, 0.5, (0,0,0), 1)
-        cv2.imwrite(figname, out)
+
+        if figname.endswith('svg'):
+            # save to `svg` vectorized file, using plt
+            fig, ax = plt.subplots()
+            ax.imshow(out)
+            fig.patch.set_visible(False)
+            ax.axis('off')
+            plt.savefig(figname, dpi=300)
+            plt.close('all')
+        else:
+            cv2.imwrite(figname, out)
 
 
 if __name__ == '__main__':
@@ -363,8 +374,9 @@ if __name__ == '__main__':
     flip_to_left = True
     mode = 'composite'
     findex = 0
+    fmt = 'svg'
 
     #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
     #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
-    colorize_atlas2d_cv2(annot=False)
+    colorize_atlas2d_cv2(annot=False, fmt=fmt)
 
