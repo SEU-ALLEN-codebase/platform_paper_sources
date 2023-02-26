@@ -15,6 +15,7 @@ import pandas as pd
 from skimage import exposure, filters, measure
 from skimage import morphology
 from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
+from scipy.optimize import curve_fit
 import matplotlib
 import matplotlib.cm as cm
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -68,11 +69,10 @@ def plot_section_outline(mask, axis=0, sectionX=None, ax=None, with_outline=True
         return ax
     
 
-def process_mip(img, mask, sectionX=None, axis=0, figname='temp.png', mode='composite'):
+def process_mip(mip, mask, sectionX=None, axis=0, figname='temp.png', mode='composite'):
     # get the mask
     brain_mask2d = get_brain_mask2d(mask, axis=axis, v=1)
 
-    mip = get_mip_image(img, axis)
     #if axis==1: cv2.imwrite('temp.png', mip); sys.exit()
     im = np.ones((mip.shape[0], mip.shape[1], 4), dtype=np.uint8) * 255
     im[~brain_mask2d] = 1
@@ -108,27 +108,11 @@ def process_mip(img, mask, sectionX=None, axis=0, figname='temp.png', mode='comp
     #out = np.frombuffer(img_buffer, dtype=np.uint8).reshape(height, width, 3)
     #return out
 
-def calc_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composite', findex=0):
-    '''
-    @param mefile:          file containing microenviron features
-    @param outfile:         prefix of output file
-    @param histeq:          Whether or not to use histeq to equalize the feature values
-    @param flip_to_left:    whether map points at the right hemisphere to left hemisphere
-    @param mode:            [composite]: show 3 features; otherwise separate feature
-    @param findex:          index of feature to display
-    '''
-
-    if mode != 'composite':
-        fname = __MAP_FEATS__[findex]
-        prefix = f'{outfile}_{fname}'
-    else:
-        prefix = f'{outfile}'
-
-    mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
+def get_me_mips(mefile, shape3d, histeq, flip_to_left, mode, findex):
     df, feat_names = process_features(mefile)
-
+    
     c = len(feat_names)
-    zdim, ydim, xdim = mask.shape
+    zdim, ydim, xdim = shape3d
     zdim2, ydim2, xdim2 = zdim//2, ydim//2, xdim//2
     memap = np.zeros((zdim, ydim, xdim, c), dtype=np.uint8)
     xyz = np.round(df[['soma_x', 'soma_y', 'soma_z']].to_numpy()).astype(np.int32)
@@ -158,6 +142,7 @@ def calc_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composit
     
     # keep only values near the section plane
     thickX2 = 40
+    mips = []
     for axid in range(3):
         print(f'--> Processing axis: {axid}')
         cur_memap = memap.copy()
@@ -174,8 +159,31 @@ def calc_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composit
                 cur_memap[:,:,xdim2+thickX2:] = 0
         print(cur_memap.mean(), cur_memap.std())
         
+        mip = get_mip_image(cur_memap, axid)
+        mips.append(mip)
+    return mips
+
+def generate_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composite', findex=0):
+    '''
+    @param mefile:          file containing microenviron features
+    @param outfile:         prefix of output file
+    @param histeq:          Whether or not to use histeq to equalize the feature values
+    @param flip_to_left:    whether map points at the right hemisphere to left hemisphere
+    @param mode:            [composite]: show 3 features; otherwise separate feature
+    @param findex:          index of feature to display
+    '''
+    if mode != 'composite':
+        fname = __MAP_FEATS__[findex]
+        prefix = f'{outfile}_{fname}'
+    else:
+        prefix = f'{outfile}'
+    
+    mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
+    shape3d = mask.shape
+    mips = get_me_mips(mefile, shape3d, histeq, flip_to_left, mode, findex)
+    for axid, mip in enumerate(mips):
         figname = f'{prefix}_mip{axid}.png'
-        mip = process_mip(cur_memap, mask, axis=axid, figname=figname, mode=mode)
+        process_mip(mip, mask, axis=axid, figname=figname, mode=mode)
         # load and remove the zero-alpha block
         img = cv2.imread(figname, cv2.IMREAD_UNCHANGED)
         wnz = np.nonzero(img[img.shape[0]//2,:,-1])[0]
@@ -189,6 +197,93 @@ def calc_me_maps(mefile, outfile, histeq=True, flip_to_left=True, mode='composit
         img[img[:,:,-1] == 1] = 0
         cv2.imwrite(figname, img)
         
+def plot_left_right_corr(mefile, outfile, histeq=True, mode='composite', findex=0):
+    if mode != 'composite':
+        fname = __MAP_FEATS__[findex]
+        prefix = f'{outfile}_{fname}'
+    else:
+        prefix = f'{outfile}'
+
+    def customized_func(x, a):
+        return a*x
+
+    def customized_line(xkey, ykey, color=None, label=None, **kwargs):
+        # we should use `y = ax` to fit our data.
+        ax = plt.gca()
+        popt, pcov = curve_fit(customized_func, xkey, ykey)
+        print(popt, pcov)
+        xdata = np.arange(0, 255)
+        ydata = popt[0] * xdata
+        ax.plot(xdata, ydata, linewidth=3, color=color, label=label)
+        # annotate
+        ax.text(.05, .8, f'y={popt[0]:.2f}x\npcov={pcov[0][0]:.2g}', 
+                fontsize=20, transform=ax.transAxes, color=color)
+
+    
+    mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
+    shape3d = mask.shape
+    mips = get_me_mips(mefile, shape3d, False, False, mode, findex)
+    xlabel = 'Value predicted \nfrom left-hemisphere'
+    ylabel = 'Right-hemispheric value'
+    data = []
+    for axid, mip in enumerate(mips):
+        if axid == 0: continue # no left/right difference
+        s1, s2 = mip.shape[:2]
+        sh = s1 // 2
+        print(s1, s2, sh)
+        fg_mask_left = mip.sum(axis=-1) != 0; fg_mask_left[:sh] = 0
+        fg_mask_right = mip.sum(axis=-1) != 0; fg_mask_right[sh:] = 0
+        vpreds = []
+        vtrues = []
+        lindices = np.where(fg_mask_left)
+        rindices = np.where(fg_mask_right)
+        rindices_m = (s1 - rindices[0], rindices[1])
+        for i in range(mip.shape[2]):
+            lvalues = mip[:,:,i][lindices]
+            interp = LinearNDInterpolator(np.transpose(lindices), lvalues)
+            vpreds.append(interp(*rindices_m))
+            vtrues.append(mip[:,:,i][rindices])
+        values = np.vstack((np.hstack(vpreds), np.hstack(vtrues)))
+        fnames = []
+        for mf in __MAP_FEATS__:
+            for j in range(rindices[0].shape[0]):
+                fnames.append(mf)
+        cur_data = np.array([*values, fnames]).transpose()
+        data.append(cur_data)
+
+    size1, size2 = data[0].shape[0], data[1].shape[0]
+    views = ['Axial' for i in range(size1)] + ['Coronal' for i in range(size2)]
+    data = np.vstack(data)
+    figname = f'{prefix}_left_right.png'
+    df = pd.DataFrame(data, columns=[xlabel, ylabel, 'feature']).astype({xlabel: float, ylabel: float})
+    df['view'] = views
+    # remove nan values
+    df = df[~df[xlabel].isna()]
+    print(df.shape)
+
+    sns.set_theme(style='white', font_scale=1.8)
+    g = sns.lmplot(data=df, x=xlabel, y=ylabel, col='feature', 
+                   row='view', fit_reg=False,
+                   scatter_kws={'s':5}, 
+                   facet_kws={'despine': False, 'margin_titles': True})
+    g.map(customized_line, xlabel, ylabel, color='magenta')
+    g.set(xlim=(0,255), ylim=(0,255), aspect='equal')
+    for i, ax_list in enumerate(g.axes):
+        for j, ax in enumerate(ax_list):
+            ax.spines['left'].set_linewidth(2)
+            ax.spines['right'].set_linewidth(2)
+            ax.spines['top'].set_linewidth(2)
+            ax.spines['bottom'].set_linewidth(2)
+            ax.xaxis.set_tick_params(width=2, direction='in')
+            ax.yaxis.set_tick_params(width=2, direction='in')
+            if i == 0:
+                ax.set_title(ax.get_title().split(' = ')[1])
+
+    g.figure.subplots_adjust(wspace=-0.1, hspace=0)
+    plt.savefig(figname, dpi=300)
+    plt.close('all')
+        
+        
 
 
 if __name__ == '__main__':
@@ -198,5 +293,6 @@ if __name__ == '__main__':
     mode = 'composite'
     findex = 0
 
-    calc_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
+    #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
+    plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
 
