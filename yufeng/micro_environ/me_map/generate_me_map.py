@@ -22,6 +22,9 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import cv2
 import seaborn as sns
 import matplotlib.pyplot as plt
+from fil_finder import FilFinder2D
+import astropy.units as u
+from sklearn.neighbors import KDTree
 
 from image_utils import get_mip_image, image_histeq
 from file_io import load_image, save_image
@@ -332,8 +335,8 @@ def colorize_atlas2d_cv2(outscale=3, annot=False, fmt='svg'):
                 cur_mask = section == v
                 out[:,:,:3][cur_mask] = ana_dict[v]['rgb_triplet']
         # mixing with boudnary
-        alpha = 0.5
-        out[:,:,:3][boundaries] = (255 * alpha + out[boundaries][:,:3] * (1 - alpha)).astype(np.uint8)
+        alpha = 0.2
+        out[:,:,:3][boundaries] = (0 * alpha + out[boundaries][:,:3] * (1 - alpha)).astype(np.uint8)
         #out[:,:,3][boundaries] = int(alpha * 255)
         
         figname = f'atlas_axis{axid}.{fmt}'
@@ -367,6 +370,73 @@ def colorize_atlas2d_cv2(outscale=3, annot=False, fmt='svg'):
         else:
             cv2.imwrite(figname, out)
 
+def stretch_region(mask2d, vms, left_axid, debug=True):
+    '''
+    :param vms: u32 indices of regions
+    '''
+    # mask for target regions
+    for i, v in enumerate(vms):
+        if i == 0:
+            m = mask2d == v
+        else:
+            m = m | (mask2d == v)
+    if left_axid == 0:
+        m[:m.shape[0]//2] = 0
+    elif left_axid == 1:
+        m[:,:m.shape[1]//2] = 0
+
+    # get medial axis
+    #skel, distance = morphology.medial_axis(m, return_distance=True)
+    # The skel may be multi-headed, we use the longest one
+    skel = m.astype(np.uint8)
+    fil = FilFinder2D(skel, distance=250 * u.pc, mask=skel)
+    fil.preprocess_image(flatten_percent=95)
+    fil.create_mask(border_masking=True, verbose=False, use_existing_mask=True)
+    fil.medskel(verbose=False)
+    fil.analyze_skeletons(branch_thresh=40* u.pix, skel_thresh=10 * u.pix, prune_criteria='length')
+    # get the nearest points on skeleton 
+    mask_pts = np.stack(np.nonzero(m)).transpose()
+    ma_pts = np.stack(np.nonzero(fil.skeleton_longpath)).transpose()
+    kdtree = KDTree(ma_pts, leaf_size=2)
+    dmin1, imin1 = kdtree.query(mask_pts, k=1)
+    # get the rotation matrices
+    anchors = np.stack((np.zeros(ma_pts.shape[0]), np.arange(-ma_pts.shape[0]+1,1))).transpose()
+    pt_anchor = ma_pts[[-1]].copy()
+    ma_pts = ma_pts - ma_pts[[-1]]
+    
+    v11 = (anchors * ma_pts).sum(axis=1)
+    v12 = np.cross(ma_pts, anchors)
+    rmat = np.array([v11, -v12, v12, v11]) / (np.linalg.norm(anchors, axis=1) * np.linalg.norm(ma_pts, axis=1) +1e-10)
+    # manually set the last point as identity
+    rmat[:,-1] = [0,-1,1,0]
+    rmat = rmat.transpose().reshape((-1,2,2))
+    ma_pts_rotated = np.einsum('BNi,Bi ->BN', rmat, ma_pts)
+    ma_pts_rotated = np.round(ma_pts_rotated).astype(int) + pt_anchor
+    rmat_mask = rmat[imin1[:,0]]
+    mask_pts_rotated = np.einsum('BNi,Bi ->BN', rmat_mask, mask_pts - pt_anchor)
+    mask_pts_rotated = np.round(mask_pts_rotated).astype(int) + pt_anchor
+    temp = np.zeros_like(skel)
+    temp[ma_pts_rotated[:,0], ma_pts_rotated[:,1]] = 1
+    temp2 = np.zeros_like(skel)
+    temp2[mask_pts_rotated[:,0], mask_pts_rotated[:,1]] = 1
+    
+    # optional visualization
+    if debug:
+        plt.imshow(skel*255, cmap='magma')
+        plt.contour(fil.skeleton_longpath, colors='r')
+        plt.contour(temp2, colors='m')
+        plt.contour(temp, colors='b')
+        plt.title('Medial axis')
+        plt.axis('off')
+        plt.savefig('median_axis.png', dpi=200)
+        plt.close('all')
+    
+
+class MeMapAnalyzer:
+    def __init__(self):
+        pass
+
+
 
 if __name__ == '__main__':
     mefile = './data/micro_env_features_nodes300-1500_withoutNorm.csv'
@@ -378,5 +448,12 @@ if __name__ == '__main__':
 
     #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
     #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
-    colorize_atlas2d_cv2(annot=False, fmt=fmt)
+    #colorize_atlas2d_cv2(annot=False, fmt=fmt)
+
+    mask = load_image(MASK_CCF25_FILE)
+    mshape = mask.shape
+    axid = 1
+    mask2d = np.take(mask, mshape[axid]//2, axid)
+    vms = [672]
+    stretch_region(mask2d, vms, left_axid=0, debug=True)
 
