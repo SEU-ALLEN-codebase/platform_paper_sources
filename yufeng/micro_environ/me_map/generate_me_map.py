@@ -322,7 +322,7 @@ def colorize_atlas2d_cv2(outscale=3, annot=False, fmt='svg'):
                 cc = cv2.connectedComponents(cur_mask.astype(np.uint8))
                 for i in range(cc[0] - 1):
                     cur_mask = cc[1] == (i+1)
-                    if cur_mask.sum() < 50:
+                    if cur_mask.sum() < 5:
                         continue
                     indices = np.where(cur_mask)
                     xmean = (indices[0].min() + indices[0].max()) // 2
@@ -384,13 +384,18 @@ def stretch_region(mask2d, vms, left_axid, debug=True):
         m[:m.shape[0]//2] = 0
     elif left_axid == 1:
         m[:,:m.shape[1]//2] = 0
+    # remove isolated points
+    m_conv = cv2.filter2D(m.astype(np.uint8), ddepth=-1, kernel=np.ones((3,3),dtype=int))
+    m[m_conv == 1] = 0
+
 
     # get medial axis
-    #skel, distance = morphology.medial_axis(m, return_distance=True)
+    skel = morphology.skeletonize(m, method='lee')
     # The skel may be multi-headed, we use the longest one
-    skel = m.astype(np.uint8)
+    skel = skel.astype(np.uint8)
+
     fil = FilFinder2D(skel, distance=250 * u.pc, mask=skel)
-    fil.preprocess_image(flatten_percent=95)
+    fil.preprocess_image(flatten_percent=90)
     fil.create_mask(border_masking=True, verbose=False, use_existing_mask=True)
     fil.medskel(verbose=False)
     fil.analyze_skeletons(branch_thresh=40* u.pix, skel_thresh=10 * u.pix, prune_criteria='length')
@@ -401,31 +406,45 @@ def stretch_region(mask2d, vms, left_axid, debug=True):
     dmin1, imin1 = kdtree.query(mask_pts, k=1)
     # get the rotation matrices
     anchors = np.stack((np.zeros(ma_pts.shape[0]), np.arange(-ma_pts.shape[0]+1,1))).transpose()
-    pt_anchor = ma_pts[[-1]].copy()
-    ma_pts = ma_pts - ma_pts[[-1]]
+    # get the anchor point
+    ma_pts_sum = cv2.filter2D(fil.skeleton_longpath, ddepth=-1, kernel=np.ones((3,3),dtype=int))
+    ep_mask = (ma_pts_sum == 2) & (fil.skeleton_longpath > 0)
+    ep_pts = np.nonzero(ep_mask)
+    pt_anchor = np.array([[ep_pts[0][1], ep_pts[1][1]]])
+    ma_pts_shift = ma_pts - pt_anchor
     
-    v11 = (anchors * ma_pts).sum(axis=1)
-    v12 = np.cross(ma_pts, anchors)
-    rmat = np.array([v11, -v12, v12, v11]) / (np.linalg.norm(anchors, axis=1) * np.linalg.norm(ma_pts, axis=1) +1e-10)
+    v11 = (anchors * ma_pts_shift).sum(axis=1)
+    v12 = np.cross(ma_pts_shift, anchors)
+    rmat = np.array([v11, -v12, v12, v11]) / (np.linalg.norm(anchors, axis=1) * np.linalg.norm(ma_pts_shift, axis=1) +1e-10)
     # manually set the last point as identity
-    rmat[:,-1] = [0,-1,1,0]
+    i_idx = np.nonzero(np.fabs(ma_pts_shift).sum(axis=1) == 0)[0]
+    rmat[:,i_idx[0]] = [0,-1,1,0]
     rmat = rmat.transpose().reshape((-1,2,2))
-    ma_pts_rotated = np.einsum('BNi,Bi ->BN', rmat, ma_pts)
-    ma_pts_rotated = np.round(ma_pts_rotated).astype(int) + pt_anchor
-    rmat_mask = rmat[imin1[:,0]]
-    mask_pts_rotated = np.einsum('BNi,Bi ->BN', rmat_mask, mask_pts - pt_anchor)
-    mask_pts_rotated = np.round(mask_pts_rotated).astype(int) + pt_anchor
-    temp = np.zeros_like(skel)
-    temp[ma_pts_rotated[:,0], ma_pts_rotated[:,1]] = 1
-    temp2 = np.zeros_like(skel)
-    temp2[mask_pts_rotated[:,0], mask_pts_rotated[:,1]] = 1
+    
     
     # optional visualization
     if debug:
-        plt.imshow(skel*255, cmap='magma')
-        plt.contour(fil.skeleton_longpath, colors='r')
-        plt.contour(temp2, colors='m')
-        plt.contour(temp, colors='b')
+        ma_pts_rotated = np.einsum('BNi,Bi ->BN', rmat, ma_pts_shift)
+        ma_pts_rotated = np.round(ma_pts_rotated).astype(int) + pt_anchor
+        rmat_mask = rmat[imin1[:,0]]
+        mask_pts_rotated = np.einsum('BNi,Bi ->BN', rmat_mask, mask_pts - pt_anchor)
+        mask_pts_rotated = np.round(mask_pts_rotated).astype(int) + pt_anchor
+        
+        plt.scatter(mask_pts[:,1], mask_pts[:,0], color='r', alpha=.3, s=1)
+        plt.scatter(ma_pts[:,1], ma_pts[:,0], color='k', s=1)
+        plt.scatter(mask_pts_rotated[:,1], mask_pts_rotated[:,0], c='g', s=1, alpha=0.3)
+        plt.scatter(ma_pts_rotated[:,1], ma_pts_rotated[:,0], c='k', s=1)
+        # plot shift vector
+        ma_pts_t = np.stack((ma_pts, ma_pts_rotated), axis=1)
+        for pts in ma_pts_t:
+            if np.random.random() > 0.1: continue
+            plt.plot(pts[:,1], pts[:,0], color='b')
+        #mask_pts_t = np.stack((mask_pts, mask_pts_rotated), axis=1)
+        #for pts in mask_pts_t:
+        #    if np.random.random() > 0.01: continue
+        #    if np.linalg.norm(pts[0] - pts[1]) < 30: continue
+        #    plt.plot(pts[:,1], pts[:,0], color='b')
+
         plt.title('Medial axis')
         plt.axis('off')
         plt.savefig('median_axis.png', dpi=200)
@@ -448,12 +467,21 @@ if __name__ == '__main__':
 
     #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
     #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
-    #colorize_atlas2d_cv2(annot=False, fmt=fmt)
+    #colorize_atlas2d_cv2(annot=True, fmt=fmt)
 
+    
     mask = load_image(MASK_CCF25_FILE)
     mshape = mask.shape
     axid = 1
     mask2d = np.take(mask, mshape[axid]//2, axid)
-    vms = [672]
+    #vms = [672] # CP
+    ana_dict = parse_ana_tree(keyname='name')
+    vms = []
+    for rname in ['ORBm', 'ORBvl', 'ORBl', 'AId', 'MOp', 'GU', 'SSp-m', 'SSs', 'VISC', 'TEa', 'ECT', 'PERI', 'ENTl', 'ENTm', 'CLA', 'AIv', 'HPF']:
+        for l in ['', '1', '2', '2a', '2b', '3', '2/3', '4', '4/5', '5', '5/6', '6a','6b', '6']:
+            rfname = f'{rname}{l}'
+            if rfname not in ana_dict: continue
+            rid = ana_dict[rfname]['id']
+            vms.append(rid)
     stretch_region(mask2d, vms, left_axid=0, debug=True)
-
+    
