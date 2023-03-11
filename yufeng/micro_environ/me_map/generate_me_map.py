@@ -62,7 +62,7 @@ def plot_section_outline(mask, axis=0, sectionX=None, ax=None, with_outline=True
         fig, ax = plt.subplots()
         brain_mask2d = get_brain_mask2d(mask, axis=axis, v=1)
         im = np.ones((sh, sw, 4), dtype=np.uint8) * 255
-        im[~brain_mask2d] = 1
+        im[~brain_mask2d] = 0#1
 
     # show boundary
     b_indices = np.where(boundary_mask2d)
@@ -80,13 +80,13 @@ def plot_section_outline(mask, axis=0, sectionX=None, ax=None, with_outline=True
         return ax
     
 
-def process_mip(mip, mask, sectionX=None, axis=0, figname='temp.png', mode='composite'):
+def process_mip(mip, mask, sectionX=None, axis=0, figname='temp.png', mode='composite', with_outline=True, outline_color='orange'):
     # get the mask
     brain_mask2d = get_brain_mask2d(mask, axis=axis, v=1)
 
     #if axis==1: cv2.imwrite('temp.png', mip); sys.exit()
     im = np.ones((mip.shape[0], mip.shape[1], 4), dtype=np.uint8) * 255
-    im[~brain_mask2d] = 1
+    im[~brain_mask2d] = 0#1 # should be 1 for processing
     
     fig, ax = plt.subplots()
     width, height = fig.get_size_inches() * fig.get_dpi()
@@ -108,8 +108,9 @@ def process_mip(mip, mask, sectionX=None, axis=0, figname='temp.png', mode='comp
         fg_values = mip[fg_indices][:,0] / 255.
         cmap = 'coolwarm'
     
-    ax.scatter(fg_indices[1], fg_indices[0], c=fg_values, s=5, edgecolors='none', cmap=cmap)
-    plot_section_outline(mask, axis=axis, sectionX=sectionX, ax=ax, with_outline=True, outline_color='orange')
+    if len(fg_indices[0]) > 0:
+        ax.scatter(fg_indices[1], fg_indices[0], c=fg_values, s=5, edgecolors='none', cmap=cmap)
+    plot_section_outline(mask, axis=axis, sectionX=sectionX, ax=ax, with_outline=with_outline, outline_color=outline_color)
 
     plt.savefig(figname, dpi=300)
     plt.close('all')
@@ -473,12 +474,65 @@ def plot_me_dsmatrix(feat_file, axid, min_num_samples=10):
         mip[mask2d == rid] = palette[cid]
     process_mip(mip, mask, sectionX=None, axis=axid, figname='feature_classes.png', mode='composite')
     
+    # plot the evolution of features along path
+    paths = {
+        0: ['OLF', 'MOB', 'ORBvl1', 'ORBvl2/3', 'ORBl5', 'AId5', 'MOp5', 'GU5', 'SSp-m5', 
+            'SSs5', 'VISC5', 'TEa5', 'ECT5', 'ENTl5', 'ENTm5', 'PAR', 'PRE', 'SUB', 'CA1',
+            'CA3', 'DG-mo'],
+        1: ['SSs1', 'SSs2/3', 'SSs4', 'SSs5', 'SSs6a', 'CP', 'VPL', 'VPM', 'PO', 
+            'CL', 'MD'],
+        2: ['STR', 'LSr', 'SF', 'PVT', 'IMD', 'PF', 'MRN', 'MB']
+    }
+    fmerge2 = fmerge.rename(index=dict(zip(df.rid, df.rname)))
+    colors_f = ['orange', 'mediumblue', 'lime']
+    for i, path in paths.items():
+        cur_data = fmerge2.loc[path]
+        xp = np.arange(cur_data.shape[0])
+        for jj in range(3):
+            plt.plot(xp, cur_data.iloc[:, jj], 'o-', color=colors_f[jj], label=__MAP_FEATS__[jj])
+            #lower = cur_data.iloc[:,jj]-cur_data.iloc[:,jj+3]
+            #upper = cur_data.iloc[:,jj]+cur_data.iloc[:,jj+3]
+            #plt.fill_between(xp, lower, upper, color=colors_f[jj], alpha=0.2)
 
+        fs = 13
+        plt.xlim(xp[0], xp[-1])
+        plt.ylim(0.1, 0.9)
+        plt.xticks(xp, path, rotation=90, fontsize=fs)
+        plt.yticks(fontsize=fs)
+        plt.xlabel(f'Region along path{i+1}', fontsize=fs*1.5)
+        plt.ylabel('Normalized feature value', fontsize=fs*1.5)
+        ax = plt.gca()
+        ax.xaxis.set_tick_params(width=2, direction='in')
+        ax.yaxis.set_tick_params(width=2, direction='in')
+        ax.spines['left'].set_linewidth(2)
+        ax.spines['right'].set_linewidth(2)
+        ax.spines['top'].set_linewidth(2)
+        ax.spines['bottom'].set_linewidth(2)
+        plt.legend(frameon=False)
+        plt.subplots_adjust(bottom=0.25)
+        plt.savefig(f'feature_along_path{i}.png', dpi=300)
+        plt.close('all')
+
+    
        
 
 def stretch_region_CP(mask2d, vms, left_axid, debug=True):
     '''
-    :param vms: u32 indices of regions
+    Example usage: 
+    
+    mask = load_image(MASK_CCF25_FILE)
+    mshape = mask.shape
+    axid = 1
+    mask2d = np.take(mask, mshape[axid]//2, axid)
+    #ana_dict = parse_ana_tree(keyname='name')
+    #vms = []
+    #for rname in ['ORBm', 'ORBvl', 'ORBl', 'AId', 'MOp', 'GU', 'SSp-m', 'SSs', 'VISC', 'TEa', 'ECT', 'PERI', 'ENTl', 'ENTm', 'CLA', 'AIv', 'HPF']:
+    #    for l in ['', '1', '2', '2a', '2b', '2/3', '3', '4', '4/5', '5', '5/6', '6a','6b', '6']:
+    #        rfname = f'{rname}{l}'
+    #        if rfname not in ana_dict: continue
+    #        rid = ana_dict[rfname]['id']
+    #        vms.append(rid)
+    stretch_region_CP(mask2d, vms, left_axid=0, debug=True)
     '''
     # mask for target regions
     for i, v in enumerate(vms):
@@ -574,27 +628,24 @@ if __name__ == '__main__':
     findex = 0
     fmt = 'svg'
 
+    '''
+    # save outline
+    mask = load_image(MASK_CCF25_FILE)
+    for axid in range(3):
+        figname = f'section_outline_axis{axid}.png'
+        mip = np.take(mask, mask.shape[axid]//2, axid)
+        mip[:] = 0
+        process_mip(mip, mask, sectionX=None, axis=axid, figname=figname, mode='composite', with_outline=False)
+    '''
+    
+
     #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
     #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
     #colorize_atlas2d_cv2(annot=True, fmt=fmt)
 
     #sectional_dsmatrix(mefile, 'me_dsmatrix', histeq=False, flip_to_left=True, mode=mode, findex=findex)
-    dsfile = 'me_dsmatrix_mip1.csv'
-    plot_me_dsmatrix(dsfile, axid=1)
+    #dsfile = 'me_dsmatrix_mip1.csv'
+    #plot_me_dsmatrix(dsfile, axid=1)
 
-    '''
-    mask = load_image(MASK_CCF25_FILE)
-    mshape = mask.shape
-    axid = 1
-    mask2d = np.take(mask, mshape[axid]//2, axid)
-    #ana_dict = parse_ana_tree(keyname='name')
-    #vms = []
-    #for rname in ['ORBm', 'ORBvl', 'ORBl', 'AId', 'MOp', 'GU', 'SSp-m', 'SSs', 'VISC', 'TEa', 'ECT', 'PERI', 'ENTl', 'ENTm', 'CLA', 'AIv', 'HPF']:
-    #    for l in ['', '1', '2', '2a', '2b', '2/3', '3', '4', '4/5', '5', '5/6', '6a','6b', '6']:
-    #        rfname = f'{rname}{l}'
-    #        if rfname not in ana_dict: continue
-    #        rid = ana_dict[rfname]['id']
-    #        vms.append(rid)
-    stretch_region_CP(mask2d, vms, left_axid=0, debug=True)
-    '''
+    
     
