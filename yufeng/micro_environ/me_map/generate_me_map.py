@@ -11,11 +11,13 @@
 #================================================================
 
 import numpy as np
+import numbers
 import pandas as pd
 from skimage import exposure, filters, measure
 from skimage import morphology
 from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
 from scipy.optimize import curve_fit
+from scipy.spatial import distance_matrix
 import matplotlib
 import matplotlib.cm as cm
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -25,12 +27,17 @@ import matplotlib.pyplot as plt
 from fil_finder import FilFinder2D
 import astropy.units as u
 from sklearn.neighbors import KDTree
+from sklearn.cluster import KMeans
 
 from image_utils import get_mip_image, image_histeq
 from file_io import load_image, save_image
 from anatomy.anatomy_config import MASK_CCF25_FILE
 from anatomy.anatomy_vis import get_brain_outline2d, get_section_boundary_with_outline, get_brain_mask2d, get_section_boundary
 from anatomy.anatomy_core import parse_ana_tree
+
+import sys
+sys.path.append('../../common_lib')
+from common_utils import get_structures_from_regions
 
 # features selected by mRMR
 __MAP_FEATS__ = ('AverageContraction', 'HausdorffDimension', 'pca_vr3')
@@ -370,7 +377,106 @@ def colorize_atlas2d_cv2(outscale=3, annot=False, fmt='svg'):
         else:
             cv2.imwrite(figname, out)
 
-def stretch_region(mask2d, vms, left_axid, debug=True):
+def sectional_dsmatrix(mefile, outfile, histeq=True, flip_to_left=True, mode='composite', findex=0):
+    '''
+    @param mefile:          file containing microenviron features
+    @param outfile:         prefix of output file
+    @param histeq:          Whether or not to use histeq to equalize the feature values
+    @param flip_to_left:    whether map points at the right hemisphere to left hemisphere
+    @param mode:            [composite]: show 3 features; otherwise separate feature
+    @param findex:          index of feature to display
+    '''
+    if mode != 'composite':
+        fname = __MAP_FEATS__[findex]
+        prefix = f'{outfile}_{fname}'
+    else:
+        prefix = f'{outfile}'
+    
+    mask = load_image(MASK_CCF25_FILE)  # z,y,x order!
+    shape3d = mask.shape
+    mips = get_me_mips(mefile, shape3d, histeq, flip_to_left, mode, findex)
+    ana_dict = parse_ana_tree(keyname='id')
+    for axid, mip in enumerate(mips):
+        out_file = f'{prefix}_mip{axid}.csv'
+        if axid != 1: continue
+        mask2d = np.take(mask, mask.shape[axid]//2, axid)
+        nz_mask = (mip.sum(axis=-1) > 0) & (mask2d > 0)
+        mask2d[~nz_mask] = 0
+        # calculate ds
+        mip = mip / 255.
+        df = pd.DataFrame(mip[nz_mask], columns=['f1', 'f2', 'f3'])
+        df['rid'] = mask2d[nz_mask]
+        df['rname'] = [ana_dict[idx]['acronym'] for idx in df['rid']]
+        structs = get_structures_from_regions(df['rid'], ana_dict, struct_dict=None, return_name=True)
+        df['struct'] = structs
+        cxs, cys = [], []
+        for rid in df.rid:
+            cur_reg = np.nonzero(mask2d == rid)
+            cx = cur_reg[0].mean()
+            cy = cur_reg[1].mean()
+            cxs.append(cx)
+            cys.append(cy)
+        df['xcenter'] = cxs
+        df['ycenter'] = cys
+        df.to_csv(out_file)
+
+def plot_me_dsmatrix(feat_file, axid, min_num_samples=10):
+    df = pd.read_csv(feat_file, index_col=0)
+    # filter by number
+    regs, counts = np.unique(df['rname'], return_counts=True)
+    # remove fiber tracts or similar
+    non_tracts = np.array([not rname.islower() for rname in regs])
+    keep_mask = (counts >= min_num_samples) & non_tracts
+    keep_regs = regs[keep_mask]
+    keep_counts = counts[keep_mask]
+    df = df[df['rname'].isin(keep_regs)]
+    '''df_feat = df.iloc[:,:3]
+    corr = pd.DataFrame(distance_matrix(df_feat, df_feat), index=df.rname, columns=df.rname)
+    #corr = df_feat.transpose().corr()
+    #corr = corr.rename(columns=dict(zip(corr.columns, df.rname))).rename(index=dict(zip(corr.index, df.rname)))
+    print(corr.shape)
+    mcorr = corr.groupby(by=corr.columns, axis=1).apply(lambda g: g.mean(axis=1) if isinstance(g.iloc[0,0], numbers.Number) else g.iloc[:,0])
+    mcorr = mcorr.groupby(by=mcorr.index, axis=0).apply(lambda g: g.mean(axis=0) if isinstance(g.iloc[0,0], numbers.Number) else g.iloc[:,0])
+    # plot
+    structs = []
+    r2s_dict = dict(zip(df.rname, df.struct))
+    for rn in mcorr.index:
+        structs.append(r2s_dict[rn])
+    lut = dict(zip(np.unique(structs), "rbgm"))
+    row_colors = [lut[s] for s in structs]
+    cm = sns.clustermap(mcorr, cmap='coolwarm_r', 
+                       xticklabels=1, yticklabels=1,
+                       row_colors=row_colors)
+    plt.savefig('region_corr.png', dpi=200)
+    plt.close('all')
+    '''
+
+    # do clustering
+    fmean = df.groupby('rid').mean()
+    fstd = df.groupby('rid').std()
+    fmerge = fmean.merge(fstd, how='inner', on='rid')[['f1_x', 'f2_x', 'f3_x', 'f1_y', 'f2_y', 'f3_y']]
+    nclass = 6
+    palette = {
+        0: (102,255,102),
+        1: (255,102,102),
+        2: (255,255,102),
+        3: (102,255,255),
+        4: (102,102,255),
+        5: (178,102,255)
+    }
+    kmeans = KMeans(n_clusters=nclass)
+    kmeans.fit(fmerge)
+    mask = load_image(MASK_CCF25_FILE)
+    mask2d = np.take(mask, mask.shape[axid]//2, axid)
+    mip = np.zeros((*mask2d.shape[:2], 3), dtype=mask2d.dtype)
+    for rid, cid in zip(fmerge.index, kmeans.labels_):
+        mip[mask2d == rid] = palette[cid]
+    process_mip(mip, mask, sectionX=None, axis=axid, figname='feature_classes.png', mode='composite')
+    
+
+       
+
+def stretch_region_CP(mask2d, vms, left_axid, debug=True):
     '''
     :param vms: u32 indices of regions
     '''
@@ -390,7 +496,8 @@ def stretch_region(mask2d, vms, left_axid, debug=True):
 
 
     # get medial axis
-    skel = morphology.skeletonize(m, method='lee')
+    skel = morphology.medial_axis(m)
+    #skel = morphology.skeletonize(m, method='lee')
     # The skel may be multi-headed, we use the longest one
     skel = skel.astype(np.uint8)
 
@@ -399,6 +506,11 @@ def stretch_region(mask2d, vms, left_axid, debug=True):
     fil.create_mask(border_masking=True, verbose=False, use_existing_mask=True)
     fil.medskel(verbose=False)
     fil.analyze_skeletons(branch_thresh=40* u.pix, skel_thresh=10 * u.pix, prune_criteria='length')
+    # we should extend the skeleteon until outside of the region
+    ma_pts_sum = cv2.filter2D(fil.skeleton_longpath, ddepth=-1, kernel=np.ones((3,3),dtype=int))
+    ep_mask = (ma_pts_sum == 2) & (fil.skeleton_longpath > 0)
+    ep_pts = np.nonzero(ep_mask)
+
     # get the nearest points on skeleton 
     mask_pts = np.stack(np.nonzero(m)).transpose()
     ma_pts = np.stack(np.nonzero(fil.skeleton_longpath)).transpose()
@@ -406,10 +518,7 @@ def stretch_region(mask2d, vms, left_axid, debug=True):
     dmin1, imin1 = kdtree.query(mask_pts, k=1)
     # get the rotation matrices
     anchors = np.stack((np.zeros(ma_pts.shape[0]), np.arange(-ma_pts.shape[0]+1,1))).transpose()
-    # get the anchor point
-    ma_pts_sum = cv2.filter2D(fil.skeleton_longpath, ddepth=-1, kernel=np.ones((3,3),dtype=int))
-    ep_mask = (ma_pts_sum == 2) & (fil.skeleton_longpath > 0)
-    ep_pts = np.nonzero(ep_mask)
+    
     pt_anchor = np.array([[ep_pts[0][1], ep_pts[1][1]]])
     ma_pts_shift = ma_pts - pt_anchor
     
@@ -469,19 +578,23 @@ if __name__ == '__main__':
     #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
     #colorize_atlas2d_cv2(annot=True, fmt=fmt)
 
-    
+    #sectional_dsmatrix(mefile, 'me_dsmatrix', histeq=False, flip_to_left=True, mode=mode, findex=findex)
+    dsfile = 'me_dsmatrix_mip1.csv'
+    plot_me_dsmatrix(dsfile, axid=1)
+
+    '''
     mask = load_image(MASK_CCF25_FILE)
     mshape = mask.shape
     axid = 1
     mask2d = np.take(mask, mshape[axid]//2, axid)
-    #vms = [672] # CP
-    ana_dict = parse_ana_tree(keyname='name')
-    vms = []
-    for rname in ['ORBm', 'ORBvl', 'ORBl', 'AId', 'MOp', 'GU', 'SSp-m', 'SSs', 'VISC', 'TEa', 'ECT', 'PERI', 'ENTl', 'ENTm', 'CLA', 'AIv', 'HPF']:
-        for l in ['', '1', '2', '2a', '2b', '3', '2/3', '4', '4/5', '5', '5/6', '6a','6b', '6']:
-            rfname = f'{rname}{l}'
-            if rfname not in ana_dict: continue
-            rid = ana_dict[rfname]['id']
-            vms.append(rid)
-    stretch_region(mask2d, vms, left_axid=0, debug=True)
+    #ana_dict = parse_ana_tree(keyname='name')
+    #vms = []
+    #for rname in ['ORBm', 'ORBvl', 'ORBl', 'AId', 'MOp', 'GU', 'SSp-m', 'SSs', 'VISC', 'TEa', 'ECT', 'PERI', 'ENTl', 'ENTm', 'CLA', 'AIv', 'HPF']:
+    #    for l in ['', '1', '2', '2a', '2b', '2/3', '3', '4', '4/5', '5', '5/6', '6a','6b', '6']:
+    #        rfname = f'{rname}{l}'
+    #        if rfname not in ana_dict: continue
+    #        rid = ana_dict[rfname]['id']
+    #        vms.append(rid)
+    stretch_region_CP(mask2d, vms, left_axid=0, debug=True)
+    '''
     
