@@ -9,9 +9,10 @@
 #   Description  : 
 #
 #================================================================
-
+import os
 import numpy as np
 import numbers
+import pickle
 import pandas as pd
 from skimage import exposure, filters, measure
 from skimage import morphology
@@ -398,7 +399,10 @@ def sectional_dsmatrix(mefile, outfile, histeq=True, flip_to_left=True, mode='co
     mips = get_me_mips(mefile, shape3d, histeq, flip_to_left, mode, findex)
     ana_dict = parse_ana_tree(keyname='id')
     for axid, mip in enumerate(mips):
-        out_file = f'{prefix}_mip{axid}.csv'
+        if histeq:
+            out_file = f'{prefix}_mip{axid}_histeq.csv'
+        else:
+            out_file = f'{prefix}_mip{axid}.csv'
         if axid != 1: continue
         mask2d = np.take(mask, mask.shape[axid]//2, axid)
         nz_mask = (mip.sum(axis=-1) > 0) & (mask2d > 0)
@@ -421,8 +425,9 @@ def sectional_dsmatrix(mefile, outfile, histeq=True, flip_to_left=True, mode='co
         df['ycenter'] = cys
         df.to_csv(out_file)
 
-def plot_me_dsmatrix(feat_file, axid, min_num_samples=10):
+def plot_me_dsmatrix(feat_file, feat_file_histeq, axid, min_num_samples=10):
     df = pd.read_csv(feat_file, index_col=0)
+    df_histeq = pd.read_csv(feat_file_histeq, index_col=0)
     # filter by number
     regs, counts = np.unique(df['rname'], return_counts=True)
     # remove fiber tracts or similar
@@ -431,6 +436,7 @@ def plot_me_dsmatrix(feat_file, axid, min_num_samples=10):
     keep_regs = regs[keep_mask]
     keep_counts = counts[keep_mask]
     df = df[df['rname'].isin(keep_regs)]
+    df_histeq = df_histeq[df_histeq['rname'].isin(keep_regs)]
     '''df_feat = df.iloc[:,:3]
     corr = pd.DataFrame(distance_matrix(df_feat, df_feat), index=df.rname, columns=df.rname)
     #corr = df_feat.transpose().corr()
@@ -455,7 +461,8 @@ def plot_me_dsmatrix(feat_file, axid, min_num_samples=10):
     # do clustering
     fmean = df.groupby('rid').mean()
     fstd = df.groupby('rid').std()
-    fmerge = fmean.merge(fstd, how='inner', on='rid')[['f1_x', 'f2_x', 'f3_x', 'f1_y', 'f2_y', 'f3_y']]
+    fmedian = df_histeq.groupby('rid').median()
+    fmerge = fmean.merge(fstd, how='inner', on='rid').merge(fmedian, how='inner', on='rid')[['f1_x', 'f2_x', 'f3_x', 'f1_y', 'f2_y', 'f3_y', 'f1', 'f2', 'f3']]
     nclass = 6
     palette = {
         0: (102,255,102),
@@ -466,7 +473,7 @@ def plot_me_dsmatrix(feat_file, axid, min_num_samples=10):
         5: (178,102,255)
     }
     kmeans = KMeans(n_clusters=nclass)
-    kmeans.fit(fmerge)
+    kmeans.fit(fmerge[['f1_x', 'f2_x', 'f3_x', 'f1_y', 'f2_y', 'f3_y']])
     mask = load_image(MASK_CCF25_FILE)
     mask2d = np.take(mask, mask.shape[axid]//2, axid)
     mip = np.zeros((*mask2d.shape[:2], 3), dtype=mask2d.dtype)
@@ -484,18 +491,25 @@ def plot_me_dsmatrix(feat_file, axid, min_num_samples=10):
         2: ['STR', 'LSr', 'SF', 'PVT', 'IMD', 'PF', 'MRN', 'MB']
     }
     fmerge2 = fmerge.rename(index=dict(zip(df.rid, df.rname)))
-    colors_f = ['orange', 'mediumblue', 'lime']
+    #colors_f = ['orange', 'mediumblue', 'lime']
+    colors_f = ['red', 'green', 'blue']
     for i, path in paths.items():
-        cur_data = fmerge2.loc[path]
+        cur_data = fmerge2.loc[path][['f1_x', 'f2_x', 'f3_x', 'f1_y', 'f2_y', 'f3_y']]
+        cur_median = fmerge2.loc[path][['f1', 'f2', 'f3']]
         xp = np.arange(cur_data.shape[0])
         for jj in range(3):
-            plt.plot(xp, cur_data.iloc[:, jj], 'o-', color=colors_f[jj], label=__MAP_FEATS__[jj])
+            label = __MAP_FEATS__[jj]
+            if label == 'pca_vr3':
+                label = 'VarianceRatioOfPC3'
             #lower = cur_data.iloc[:,jj]-cur_data.iloc[:,jj+3]
             #upper = cur_data.iloc[:,jj]+cur_data.iloc[:,jj+3]
             #plt.fill_between(xp, lower, upper, color=colors_f[jj], alpha=0.2)
-
+            #plt.errorbar(xp, cur_data.iloc[:,jj], yerr=cur_data.iloc[:,jj+3], 
+            #            elinewidth=5, color=colors_f[jj], alpha=0.5)
+            plt.plot(xp, cur_data.iloc[:, jj], 's-', color=colors_f[jj], label=label)
+        
         fs = 13
-        plt.xlim(xp[0], xp[-1])
+        plt.xlim(xp[0]-1, xp[-1]+1)
         plt.ylim(0.1, 0.9)
         plt.xticks(xp, path, rotation=90, fontsize=fs)
         plt.yticks(fontsize=fs)
@@ -508,34 +522,121 @@ def plot_me_dsmatrix(feat_file, axid, min_num_samples=10):
         ax.spines['right'].set_linewidth(2)
         ax.spines['top'].set_linewidth(2)
         ax.spines['bottom'].set_linewidth(2)
+        # customized the colors of region
+        for ixtick, xtick in enumerate(ax.get_xticklabels()):
+            color = cur_median.iloc[ixtick].to_numpy()
+            xtick.set_color(color)
+
         plt.legend(frameon=False)
         plt.subplots_adjust(bottom=0.25)
         plt.savefig(f'feature_along_path{i}.png', dpi=300)
         plt.close('all')
 
-    
-       
 
-def stretch_region_CP(mask2d, vms, left_axid, debug=True):
-    '''
-    Example usage: 
-    
+def feature_evolution_CP_radial(mefile, debug=True):
     mask = load_image(MASK_CCF25_FILE)
-    mshape = mask.shape
+    shape3d = mask.shape
+    cp_id = 672
     axid = 1
-    mask2d = np.take(mask, mshape[axid]//2, axid)
-    #ana_dict = parse_ana_tree(keyname='name')
-    #vms = []
-    #for rname in ['ORBm', 'ORBvl', 'ORBl', 'AId', 'MOp', 'GU', 'SSp-m', 'SSs', 'VISC', 'TEa', 'ECT', 'PERI', 'ENTl', 'ENTm', 'CLA', 'AIv', 'HPF']:
-    #    for l in ['', '1', '2', '2a', '2b', '2/3', '3', '4', '4/5', '5', '5/6', '6a','6b', '6']:
-    #        rfname = f'{rname}{l}'
-    #        if rfname not in ana_dict: continue
-    #        rid = ana_dict[rfname]['id']
-    #        vms.append(rid)
-    stretch_region_CP(mask2d, vms, left_axid=0, debug=True)
-    '''
+    left_axid = 0
+    
+     # estimate the mip with features
+    temp_file = 'temp.pkl'
+    if os.path.exists(temp_file):
+        with open(temp_file, 'rb') as fp:
+            mips = pickle.load(fp)
+    else:
+        mips = get_me_mips(mefile, shape3d, False, True, 'composite', 0)
+        with open(temp_file, 'wb') as fp:
+            pickle.dump(mips, fp)
+
+    mask2d = np.take(mask, shape3d[axid]//2, axid)
+
+    #nrids = ['VL', 'LSr', 'STR', 'GPe', 'int', 'or', 'ar', 'aIv']
+    nrids = [81, 258, 477, 1022, 6, 484682520, 484682524, 466]
     # mask for target regions
-    for i, v in enumerate(vms):
+    cp_mask = mask2d == cp_id
+    for i, v in enumerate(nrids):
+        if i == 0:
+            ngb = mask2d == v
+        else:
+            ngb = ngb | (mask2d == v)
+    if left_axid == 0:
+        ngb[:ngb.shape[0]//2] = 0
+    elif left_axid == 1:
+        ngb[:,:ngb.shape[1]//2] = 0
+    # morphology closing to get better neighboring regions
+    ngb = morphology.dilation(ngb, morphology.square(3))
+    eks = 7
+    ekernel = np.zeros((eks,eks)); ekernel[:,eks//2+1] = 1
+    ngb = morphology.erosion(ngb, ekernel)
+    # map all coordinates according the distance of neighboring points
+    ngb_pts = np.stack(ngb.nonzero()).transpose()
+    # fg points
+    mip = mips[axid] / 255. # to 0-1
+    cp_fg = (mip.sum(axis=-1) > 0) & cp_mask
+    cp_fg_crds = np.stack(cp_fg.nonzero()).transpose()
+
+    kdtree = KDTree(ngb_pts, leaf_size=2)
+    dmin, imin = kdtree.query(cp_fg_crds, k=1)
+    df_cp = pd.DataFrame(np.hstack((dmin, mip[cp_fg])), columns=['Distance', *__MAP_FEATS__])
+    sns.lmplot(data=df_cp, x='Distance', y='pca_vr3', aspect=1.4,
+               robust=True, ci=95, n_boot=200,
+               scatter_kws={'color':'lightsalmon', 's':10}, 
+               line_kws={'color':'red'})
+
+    fs = 14
+    plt.xlim(0,70)
+    plt.ylim(0,0.9)
+    plt.xticks(fontsize=fs)
+    plt.yticks(fontsize=fs)
+    plt.xlabel('Distance along path4 (\u03bcm)', fontsize=fs*1.5)
+    plt.ylabel('Normalized VarianceRatioOfPC3', fontsize=fs*1.5)
+    ax = plt.gca()
+    width = 3
+    ax.xaxis.set_tick_params(width=width, direction='in')
+    ax.yaxis.set_tick_params(width=width, direction='in')
+    ax.spines['right'].set_visible(True)
+    ax.spines['top'].set_visible(True)  
+    ax.spines['left'].set_linewidth(width)
+    ax.spines['right'].set_linewidth(width)
+    ax.spines['top'].set_linewidth(width)
+    ax.spines['bottom'].set_linewidth(width)
+    plt.subplots_adjust(left=0.12)
+    plt.savefig('feature_evo_CP_radial.png', dpi=300)
+    plt.close('all')
+
+    if debug:
+        ngb_img = ngb.astype(np.uint8) * 128
+        #ngb_img[cp_mask] = 255
+        cv2.imwrite('ngb.png', ngb_img)
+
+     
+
+def feature_evolution_CP(mefile, debug=True):
+    '''
+    ['', '1', '2', '2a', '2b', '2/3', '3', '4', '4/5', '5', '5/6', '6a','6b', '6']:
+    '''
+    mask = load_image(MASK_CCF25_FILE)
+    shape3d = mask.shape
+    rids = [672]
+    axid = 1
+    left_axid = 0
+
+    # estimate the mip with features
+    temp_file = 'temp.pkl'
+    if os.path.exists(temp_file):
+        with open(temp_file, 'rb') as fp:
+            mips = pickle.load(fp)
+    else:
+        mips = get_me_mips(mefile, shape3d, False, True, 'composite', 0)
+        with open(temp_file, 'wb') as fp:
+            pickle.dump(mips, fp)
+
+    mask2d = np.take(mask, shape3d[axid]//2, axid)
+
+    # mask for target regions
+    for i, v in enumerate(rids):
         if i == 0:
             m = mask2d == v
         else:
@@ -569,9 +670,10 @@ def stretch_region_CP(mask2d, vms, left_axid, debug=True):
     mask_pts = np.stack(np.nonzero(m)).transpose()
     ma_pts = np.stack(np.nonzero(fil.skeleton_longpath)).transpose()
     kdtree = KDTree(ma_pts, leaf_size=2)
-    dmin1, imin1 = kdtree.query(mask_pts, k=1)
+    #dmin1, imin1 = kdtree.query(mask_pts, k=1)
     # get the rotation matrices
-    anchors = np.stack((np.zeros(ma_pts.shape[0]), np.arange(-ma_pts.shape[0]+1,1))).transpose()
+    #anchors = np.stack((np.zeros(ma_pts.shape[0]), np.arange(-ma_pts.shape[0]+1,1))).transpose()
+    anchors = np.stack((np.arange(ma_pts.shape[0])*-0.2, np.arange(-ma_pts.shape[0]+1,1))).transpose()
     
     pt_anchor = np.array([[ep_pts[0][1], ep_pts[1][1]]])
     ma_pts_shift = ma_pts - pt_anchor
@@ -583,6 +685,27 @@ def stretch_region_CP(mask2d, vms, left_axid, debug=True):
     i_idx = np.nonzero(np.fabs(ma_pts_shift).sum(axis=1) == 0)[0]
     rmat[:,i_idx[0]] = [0,-1,1,0]
     rmat = rmat.transpose().reshape((-1,2,2))
+
+    # map all points to new space
+    mip = mips[axid]
+    cp_fg = (mip.sum(axis=-1) > 0) & m
+    cp_fg_crds = np.stack(cp_fg.nonzero()).transpose()
+    cp_fg_shift = cp_fg_crds - pt_anchor
+    rmat_cp = rmat[kdtree.query(cp_fg_crds, k=1)[1][:,0]]
+    cp_fg_rotated = np.einsum('BNi,Bi ->BN', rmat_cp, cp_fg_shift) + pt_anchor
+    #values = mip[cp_fg].transpose().reshape(-1, 1)
+    #cp_fg_rotated3 = np.vstack((cp_fg_rotated, cp_fg_rotated, cp_fg_rotated))
+    #cp_features = np.hstack((cp_fg_rotated3, values))
+    #df_cp = pd.DataFrame(cp_features, columns=['h', 'w', 'fvalue'])
+    #df_cp['ftype'] = [__MAP_FEATS__[0] for i in range(rmat_cp.shape[0])] + \
+    #                 [__MAP_FEATS__[1] for i in range(rmat_cp.shape[0])] + \
+    #                 [__MAP_FEATS__[2] for i in range(rmat_cp.shape[0])]
+    #sns.lmplot(data=df_cp, x='h', y='fvalue', hue='ftype')
+    cp_features = np.hstack((cp_fg_rotated, mip[cp_fg]))
+    df_cp = pd.DataFrame(cp_features, columns=['h', 'w', __MAP_FEATS__[0], __MAP_FEATS__[1], __MAP_FEATS__[2]])
+    sns.lmplot(data=df_cp, x='h', y='pca_vr3')
+    plt.savefig('temp.png', dpi=300)
+    plt.close('all')
     
     
     # optional visualization
@@ -614,11 +737,6 @@ def stretch_region_CP(mask2d, vms, left_axid, debug=True):
         plt.close('all')
     
 
-class MeMapAnalyzer:
-    def __init__(self):
-        pass
-
-
 
 if __name__ == '__main__':
     mefile = './data/micro_env_features_nodes300-1500_withoutNorm.csv'
@@ -644,8 +762,10 @@ if __name__ == '__main__':
     #colorize_atlas2d_cv2(annot=True, fmt=fmt)
 
     #sectional_dsmatrix(mefile, 'me_dsmatrix', histeq=False, flip_to_left=True, mode=mode, findex=findex)
-    #dsfile = 'me_dsmatrix_mip1.csv'
-    #plot_me_dsmatrix(dsfile, axid=1)
+    dsfile = 'me_dsmatrix_mip1.csv'
+    dsfile_histeq = 'me_dsmatrix_mip1_histeq.csv'
+    plot_me_dsmatrix(dsfile, dsfile_histeq, axid=1)
 
-    
+    #feature_evolution_CP(mefile, debug=False)
+    #feature_evolution_CP_radial(mefile, debug=False)
     
