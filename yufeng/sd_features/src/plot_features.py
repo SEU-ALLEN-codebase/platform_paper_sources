@@ -118,17 +118,23 @@ for ct in ['stype', 'ptype', 'cstype']:
         ctypes = get_stype_categories()
         lut = dict(zip(np.unique(ctypes), sns.hls_palette(len(np.unique(ctypes)), l=0.5, s=0.8)))
         col_colors = ctypes.map(lut)
-        ct_label = 's-type'
+        ct_label = 'structure'
+        ct_columns = 1
+        ct_anchors = (1.01, 0.01)
     elif ct == 'ptype':
         ctypes = get_ptype_categories()
         lut = dict(zip(np.unique(ctypes), sns.hls_palette(len(np.unique(ctypes)), l=0.5, s=0.8)))
         col_colors = ctypes.map(lut)
         ct_label = 'p-type'
+        ct_columns = 2
+        ct_anchors = (0.7, 0.01)
     elif ct == 'cstype':
         ctypes = get_cstype_categories()
         lut = dict(zip(np.unique(ctypes), sns.hls_palette(len(np.unique(ctypes)), l=0.5, s=0.8)))
         col_colors = ctypes.map(lut)
         ct_label = 's-type-layer'
+        ct_columns = 1
+        ct_anchors = (1.01, 0.01)
     else:
         raise ValueError
 
@@ -167,11 +173,11 @@ for ct in ['stype', 'ptype', 'cstype']:
         for label in lut.keys():
             g2.ax_col_dendrogram.bar(0, 0, color=lut[label],
                                     label=label, linewidth=0)
-        g2_col_leg = g2.ax_col_dendrogram.legend(title=ct_label, loc="lower left", ncol=1, 
-                                    bbox_to_anchor=(1.01, 0.01), fontsize=rc_fontsize)
+        g2_col_leg = g2.ax_col_dendrogram.legend(title=ct_label, loc="lower left", ncol=ct_columns, 
+                                    bbox_to_anchor=ct_anchors, fontsize=rc_fontsize)
         plt.setp(g2_col_leg.get_title(), fontsize=rc_fontsize)
 
-        g2.ax_col_colors.axes.set_yticklabels(['s-type'], fontsize=rc_fontsize)
+        g2.ax_col_colors.axes.set_yticklabels([ct_label], fontsize=rc_fontsize)
         
         # colorbar
         g2.cax.set_position([0.16, .8, .02, .1])
@@ -228,7 +234,7 @@ for ct in ['stype', 'ptype', 'cstype']:
                             col_colors=col_colors, row_cluster=False,
                             col_cluster=False, 
                             xticklabels=1, yticklabels=1,
-                            figsize=(10,20), cbar_pos=(0.35, 0.85, 0.3, 0.01),
+                            figsize=(10,20), cbar_pos=(0.3, 0.85, 0.3, 0.01),
                             cbar_kws=dict(orientation='horizontal'))
 
         # row colors
@@ -243,11 +249,11 @@ for ct in ['stype', 'ptype', 'cstype']:
         for label in lut.keys():
             g1.ax_col_dendrogram.bar(0, 0, color=lut[label],
                                     label=label, linewidth=0)
-        g1_col_leg = g1.ax_col_dendrogram.legend(title=ct_label, loc="lower left", ncol=1, 
-                                    bbox_to_anchor=(1.01, 0.01), fontsize=rc_fontsize)
+        g1_col_leg = g1.ax_col_dendrogram.legend(title=ct_label, loc="lower left", ncol=ct_columns, 
+                                    bbox_to_anchor=ct_anchors, fontsize=rc_fontsize)
         plt.setp(g1_col_leg.get_title(), fontsize=rc_fontsize)
 
-        g1.ax_col_colors.axes.set_yticklabels(['s-type'], fontsize=rc_fontsize)
+        g1.ax_col_colors.axes.set_yticklabels([ct_label], fontsize=rc_fontsize)
         
         # colorbar
         g1.cax.set_xlabel('Feature prominence', fontsize=rc_fontsize)
