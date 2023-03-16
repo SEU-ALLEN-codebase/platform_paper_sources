@@ -216,10 +216,11 @@ def calc_interregional_stereotypy_ridge_plot(data_dir='./levels', type_str='styp
     
     # Draw the densities in a few steps
     print('Draw kdeplot...')
+    bw_adjust = 1.
     g.map(sns.kdeplot, vname,
-          bw_adjust=.5, clip_on=False,
+          bw_adjust=bw_adjust, clip=(-1,1),
           fill=True, alpha=0.3, linewidth=1.5)
-    g.map(sns.kdeplot, vname, clip_on=False, lw=2, bw_adjust=.5, alpha=0.7)
+    g.map(sns.kdeplot, vname, clip=(-1,1), lw=2, bw_adjust=bw_adjust, alpha=0.7)
 
     # passing color=None to refline() uses the hue mapping
     #g.refline(y=0, linewidth=2, linestyle="-", color='k', clip_on=False)
@@ -237,7 +238,7 @@ def calc_interregional_stereotypy_ridge_plot(data_dir='./levels', type_str='styp
     g.map(label, 'type')
 
     # Set the subplots to overlap
-    g.figure.subplots_adjust(hspace=hspace, wspace=-0.2)
+    g.figure.subplots_adjust(hspace=hspace, wspace=-0.15)
 
     # Remove axes details that don't play well with overlap
     g.set_titles("")
@@ -358,6 +359,6 @@ if __name__ == '__main__':
     for type_str in ['stype', 'ptype', 'cstype']:
         #calc_ds_similarity_among_levels(type_str=type_str)
         #calc_interregional_stereotypy(type_str=type_str)
-        #calc_interregional_stereotypy_ridge_plot(type_str=type_str)
-        calc_distribution_statistics(type_str=type_str)
+        calc_interregional_stereotypy_ridge_plot(type_str=type_str)
+        #calc_distribution_statistics(type_str=type_str)
     
