@@ -18,9 +18,12 @@ import pandas as pd
 import seaborn as sns
 
 from file_io import load_image
-from swc_handler import parse_swc, scale_swc, get_specific_neurite, NEURITE_TYPES
+from swc_handler import parse_swc, scale_swc, get_specific_neurite, find_soma_node, NEURITE_TYPES
 from morph_topo.morphology import Morphology
 from anatomy.anatomy_config import MASK_CCF25_FILE
+
+import sys
+sys.setrecursionlimit(100000)
 
 class BoutonFeatures:
     def __init__(self, swcfile):
@@ -54,13 +57,21 @@ class BoutonFeatures:
         den1 = num_bouton / axon_length * 100.
         return den1
 
-    def geodesic_distances(self, path_dict, frag_lengths):
-        plen_dict = self.morph.get_path_len_dict(path_dict, frag_lengths)
-        try:
-            lengths = [plen_dict[idx[0]] for idx in self.boutons]
-        except:
-            print('!!! Error!')
-            lengths = [-1 for idx in self.boutons]
+    def geodesic_distances(self, frag_lengths):
+        pl_dict = {}
+        idx_soma = find_soma_node(self.morph.tree)
+        pl_dict[idx_soma] = 0
+        q = [*self.morph.child_dict[idx_soma]]
+        while len(q) > 0:
+            head = q.pop(0)
+            # update current path
+            pid = self.morph.pos_dict[head][6]
+            pl_dict[head] = pl_dict[pid] + frag_lengths[head]
+            # update the queue
+            if head in self.morph.child_dict:
+                q.extend(self.morph.child_dict[head])
+
+        lengths = [pl_dict[idx[0]] for idx in self.boutons]
         return lengths
 
     def bouton_intervals(self, frag_lengths_dict):
@@ -97,9 +108,11 @@ class BoutonFeatures:
 
     def calc_overall_features(self, mask):
         frag_lengths, frag_lengths_dict = self.morph.calc_frag_lengths()
-        path_dict = self.morph.get_path_idx_dict()
 
         num_bouton = self.get_num_bouton()
+        if num_bouton == 0:
+            return -1, -1, -1, -1, -1, -1, -1
+
         teb_ratio = self.get_teb_ratio()
         print(f'#bouton={num_bouton}, teb_ratio={teb_ratio:.4f}')
         # overall density
@@ -107,9 +120,9 @@ class BoutonFeatures:
         print(f'overall density={den1:.4f} n/100um')
     
         # geodesic distances
-        gdists = self.geodesic_distances(path_dict, frag_lengths)
+        gdists = self.geodesic_distances(frag_lengths_dict)
         gdist = sum(gdists) / len(gdists)
-        print(f'Average gdist={gdist:.4f} um')
+        print(f'Average gdist={gdist:.4f} um, num={len(gdists)}')
         
         # interval
         int_dict = self.bouton_intervals(frag_lengths_dict)
@@ -126,14 +139,14 @@ class BoutonFeatures:
         return num_bouton, teb_ratio, den1, gdist, mean_interval, num_targets, num_segs
 
 
-def single_processor(swcfile, mask):
-    fn = os.path.splitext(os.path.split(swcfile)[-1])[0]
-    outfile = f'bouton_features/{fn}.txt'
-    if os.path.exists(outfile):
+def single_processor(swcfile, outfile, mask):
+    bf = BoutonFeatures(swcfile)
+    print(swcfile)
+    fs = bf.calc_overall_features(mask)
+    if fs[0] == -1:
         return
 
-    bf = BoutonFeatures(swcfile)
-    fs = bf.calc_overall_features(mask)
+    fn = os.path.split(outfile)[-1][:-4]
     with open(outfile, 'w') as fp:
         fp.write(fn)
         for fi in fs:
@@ -144,11 +157,15 @@ def calc_overall_features_all(bouton_dir):
     mask = load_image(MASK_CCF25_FILE)
  
     args_list = []
-    for swcfile in glob.glob(os.path.join(bouton_dir, '*.swc')):   
-        args_list.append((swcfile, mask))
+    for swcfile in glob.glob(os.path.join(bouton_dir, '*.swc')):
+        fn = os.path.splitext(os.path.split(swcfile)[-1])[0]
+        outfile = f'bouton_features/{fn}.txt'
+        if os.path.exists(outfile):
+            continue
+        args_list.append((swcfile, outfile, mask))
 
     from multiprocessing import Pool
-    pool = Pool(processes=24)
+    pool = Pool(processes=12)
     pool.starmap(single_processor, args_list)
     pool.close()
     pool.join()

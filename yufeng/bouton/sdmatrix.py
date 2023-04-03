@@ -131,7 +131,7 @@ if __name__ == '__main__':
     celltype_file = '../common_lib/41586_2021_3941_MOESM4_ESM.csv'
     outdir = '../sd_matrix/levels'
 
-    if 0:
+    if 1:
         # stypes
         structures = [key for key in struct_dict.keys()] + ['all']
         regions_list = [value for value in struct_dict.values()]
@@ -140,7 +140,7 @@ if __name__ == '__main__':
             figname = os.path.join(outdir, f'sdmatrix_bouton_stype_{structure.lower()}')
             plot_struct(feat_file, celltype_file, figname, regions=regions, vmin=-0.4, vmax=0.8, annot=False)
 
-    if 0:
+    if 1:
         # ptypes
         structures = [key for key in PstypesToShow.keys()] + ['all']
         regions_list = [value for value in PstypesToShow.values()]
