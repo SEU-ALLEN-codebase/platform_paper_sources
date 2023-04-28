@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 
 sys.path.append('../../src')
-from config import __FEAT_NAMES__
+from config import __FEAT_NAMES22__
 
 def calc_global_features(swc_file, vaa3d='/home/lyf/Softwares/installation/Vaa3D/v3d_external/bin/vaa3d'):
     cmd_str = f'xvfb-run -a -s "-screen 0 640x480x16" {vaa3d} -x global_neuron_feature -f compute_feature -i {swc_file}'
@@ -80,12 +80,12 @@ def calc_global_features_all(swc_dir, outfile, region_file):
         if iswc % 10 ==  0:
             print(f'--> {iswc} in {time.time() - t0:.2f} s')
 
-    df = pd.DataFrame(features_all, columns=['', 'region_name_r316', *__FEAT_NAMES__])
+    df = pd.DataFrame(features_all, columns=['', 'region_name_r316', *__FEAT_NAMES22__])
     df.to_csv(outfile, float_format='%g', index=False)
 
 if __name__ == '__main__':
-    swc_dir = '../gs_crop_dendrite'
-    outfile = 'lm_gs_dendrite.csv'
+    swc_dir = '../gs_crop'
+    outfile = 'lm_gs.csv'
     region_file = '../../../common_lib/41586_2021_3941_MOESM4_ESM.csv'
     
     calc_global_features_all(swc_dir, outfile, region_file)

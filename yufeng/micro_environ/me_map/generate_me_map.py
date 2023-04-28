@@ -29,6 +29,7 @@ from fil_finder import FilFinder2D
 import astropy.units as u
 from sklearn.neighbors import KDTree
 from sklearn.cluster import KMeans
+from sklearn.metrics import r2_score
 
 from image_utils import get_mip_image, image_histeq
 from file_io import load_image, save_image
@@ -230,8 +231,15 @@ def plot_left_right_corr(mefile, outfile, histeq=True, mode='composite', findex=
         xdata = np.arange(xmin, xmax)
         ydata = popt[0] * xdata
         ax.plot(xdata, ydata, linewidth=3, color=color, label=label)
+        # estimate the R_squared
+        #residuals = ykey - customized_func(xkey, *popt)
+        #ss_res = np.sum(residuals**2)
+        #ss_tot = np.sum((ykey - np.mean(ykey))**2)
+        #r_squared = 1 - (ss_res / ss_tot)
+        r_squared = r2_score(ykey, customized_func(xkey, *popt))
+
         # annotate
-        ax.text(.03, .85, f'y={popt[0]:.2f}x\npcov={pcov[0][0]:.2g}', 
+        ax.text(.03, .85, f'y={popt[0]:.2f}x\nR^2={r_squared:.2g}', 
                 fontsize=20, transform=ax.transAxes, color=color)
 
     
@@ -292,7 +300,14 @@ def plot_left_right_corr(mefile, outfile, histeq=True, mode='composite', findex=
             ax.xaxis.set_tick_params(width=2, direction='in')
             ax.yaxis.set_tick_params(width=2, direction='in')
             if i == 0:
-                ax.set_title(ax.get_title().split(' = ')[1])
+                #title = ax.get_title().split(' = ')[1]
+                if j == 0:
+                    title = 'Tortuosity'
+                elif j == 1:
+                    title = 'Hausdorff Dimension'
+                elif j == 2:
+                    title = '%Variance of PC_3'
+                ax.set_title(title)
 
     g.figure.subplots_adjust(wspace=-0.1, hspace=0)
     plt.savefig(figname, dpi=300)
@@ -488,7 +503,9 @@ def plot_me_dsmatrix(feat_file, feat_file_histeq, axid, min_num_samples=10):
             'CA3', 'DG-mo'],
         1: ['SSs1', 'SSs2/3', 'SSs4', 'SSs5', 'SSs6a', 'CP', 'VPL', 'VPM', 'PO', 
             'CL', 'MD'],
-        2: ['STR', 'LSr', 'SF', 'PVT', 'IMD', 'PF', 'MRN', 'MB']
+        #2: ['STR', 'LSr', 'SF', 'PVT', 'IMD', 'PF', 'MRN', 'MB']
+        2: ['ILA6a', 'DP', 'STR', 'LSr', 'SF', 'RT', 'CA3', 'CA1', 'SUB', 
+            'PAR', 'PRE', 'DG-mo']
     }
     fmerge2 = fmerge.rename(index=dict(zip(df.rid, df.rname)))
     #colors_f = ['orange', 'mediumblue', 'lime']
@@ -500,7 +517,11 @@ def plot_me_dsmatrix(feat_file, feat_file_histeq, axid, min_num_samples=10):
         for jj in range(3):
             label = __MAP_FEATS__[jj]
             if label == 'pca_vr3':
-                label = 'VarianceRatioOfPC3'
+                label = '%Variance PC_3'
+            elif label == 'AverageContraction':
+                label = 'Tortuosity'
+            elif label == 'HausdorffDimension':
+                label = 'Hausdorff Dimension'
             #lower = cur_data.iloc[:,jj]-cur_data.iloc[:,jj+3]
             #upper = cur_data.iloc[:,jj]+cur_data.iloc[:,jj+3]
             #plt.fill_between(xp, lower, upper, color=colors_f[jj], alpha=0.2)
@@ -513,7 +534,7 @@ def plot_me_dsmatrix(feat_file, feat_file_histeq, axid, min_num_samples=10):
         plt.ylim(0.1, 0.9)
         plt.xticks(xp, path, rotation=90, fontsize=fs)
         plt.yticks(fontsize=fs)
-        plt.xlabel(f'Region along path{i+1}', fontsize=fs*1.5)
+        plt.xlabel(f'Region along Path{i+1}', fontsize=fs*1.5)
         plt.ylabel('Normalized feature value', fontsize=fs*1.5)
         ax = plt.gca()
         ax.xaxis.set_tick_params(width=2, direction='in')
@@ -590,8 +611,8 @@ def feature_evolution_CP_radial(mefile, debug=True):
     plt.ylim(0,0.9)
     plt.xticks(fontsize=fs)
     plt.yticks(fontsize=fs)
-    plt.xlabel('Distance along path4 (\u03bcm)', fontsize=fs*1.5)
-    plt.ylabel('Normalized VarianceRatioOfPC3', fontsize=fs*1.5)
+    plt.xlabel('Distance along Path4 (\u03bcm)', fontsize=fs*1.5)
+    plt.ylabel('%Variance PC_3', fontsize=fs*1.5)
     ax = plt.gca()
     width = 3
     ax.xaxis.set_tick_params(width=width, direction='in')
@@ -758,14 +779,13 @@ if __name__ == '__main__':
     
 
     #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
-    #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
+    plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
     #colorize_atlas2d_cv2(annot=True, fmt=fmt)
 
     #sectional_dsmatrix(mefile, 'me_dsmatrix', histeq=False, flip_to_left=True, mode=mode, findex=findex)
-    dsfile = 'me_dsmatrix_mip1.csv'
-    dsfile_histeq = 'me_dsmatrix_mip1_histeq.csv'
-    plot_me_dsmatrix(dsfile, dsfile_histeq, axid=1)
+    #dsfile = 'me_dsmatrix_mip1.csv'
+    #dsfile_histeq = 'me_dsmatrix_mip1_histeq.csv'
+    #plot_me_dsmatrix(dsfile, dsfile_histeq, axid=1)
 
-    #feature_evolution_CP(mefile, debug=False)
     #feature_evolution_CP_radial(mefile, debug=False)
     
