@@ -12,6 +12,7 @@
 
 import os
 import glob
+import cv2
 import numpy as np
 import random
 from scipy.linalg import norm
@@ -105,7 +106,7 @@ def calc_best_viewpoint(pts):
     return elev, azim
 
 
-if 1:
+if 0:
     def plot_main_tracts(class_name, key='tract.swc'):
         # visualize and check the path
         mpath_dir = '../main_tracts_types'
@@ -191,7 +192,12 @@ if 1:
         ax.set_ylim(ymin+offset, ymax-offset)
         ax.set_zlim(zmin+offset, zmax-offset)
         
-        title = convert_to_proj_name(class_name)
+        #title = convert_to_proj_name(class_name)
+        if class_name[:2] == 'CP':
+            title = class_name.split('-')[0]
+        else:
+            title = '-'.join(class_name.split('-')[1:])
+
         ax.set_title(title, fontsize=50, y=1.0)
         tick_label_size = 18
         #ax.set_xlabel(r'X-coord ({}$\mu$m)'.format(scale), fontsize=tick_label_size)
@@ -204,6 +210,14 @@ if 1:
         #plt.tight_layout()
         plt.savefig(figname, dpi=200)
         plt.close('all')
+
+        # from rgb to rgba
+        img = cv2.imread(figname)
+        img_rgba = np.zeros((img.shape[0], img.shape[1], 4), dtype=img.dtype)
+        mask = img.sum(axis=-1) != 255*3
+        img_rgba[:,:, :3] = img
+        img_rgba[mask, 3] = 255
+        cv2.imwrite(figname, img_rgba)
 
         return len(files)
 
@@ -219,7 +233,7 @@ if 1:
     print(n, i)
 
 
-if 0:    # radius estimation along main tracts
+if 1:    # radius estimation along main tracts
     # params
     #mpath_dir = '../main_tracts_types'
     mpath_dir = '../CTX_ET-SSp-m-subclasses'
@@ -323,14 +337,24 @@ if 0:    # radius estimation along main tracts
             '2_CTX_ET-SSp-m': 'C3',
         }
         for class_name in ctypes:
+            print(class_name)
             if radius_type == 1:
                 radii = np.array(calc_tract_radii1(class_name)) / scale
             else:
                 radii = np.array(calc_tract_radii2(class_name)) / scale
 
-            plt.plot(np.linspace(0, 1, len(radii)), radii, label=cn_map[class_name], linewidth=3)
+            if figname == 'CTX_ET-SSp-m':
+                label = cn_map[class_name]
+            else:
+                if class_name[:2] == 'CP':
+                    label = class_name.split('-')[0]
+                else:
+                    label = '-'.join(class_name.split('-')[1:])
+            plt.plot(np.linspace(0, 1, len(radii)), radii, label=label, linewidth=3)
         
-        title = convert_to_proj_name(figname)
+        #title = convert_to_proj_name(figname)
+        title = figname
+        
         plt.title(title, fontsize=40, loc='center', y=1.0, pad=-40)
         plt.xticks([])
         
@@ -345,8 +369,11 @@ if 0:    # radius estimation along main tracts
             plt.ylabel(r'Radius (mm)', fontsize=axis_label_size)
         plt.xlim([0,1])
 
-        plt.xlabel('Main tract', fontsize=axis_label_size)
-        plt.legend(loc='center left', frameon=False, fontsize=15)
+        plt.xlabel('Normalized tract distance', fontsize=axis_label_size)
+        if figname == 'CTX_ET-SSp-m':
+            plt.legend(loc='center left', frameon=False, fontsize=25)
+        else:
+            plt.legend(loc=2, frameon=False, fontsize=25)
         plt.gca().spines['right'].set_visible(False)
         plt.gca().spines['top'].set_visible(False)
         plt.gca().spines['left'].set_linewidth(3)
@@ -426,23 +453,28 @@ if 0:    # radius estimation along main tracts
     
 
     # calculating
-    #type_dict = {
-    #    'CP': ['CP_GPe-CP', 'CP_SNr-CP'],
-    #    'CTX_ET': ['CTX_ET-MOp', 'CTX_ET-MOs', 'CTX_ET-RSPv', 'CTX_ET-SSp-bfd', 'CTX_ET-SSp-m', 'CTX_ET-SSp-n', 'CTX_ET-SSp-ul', 'CTX_ET-SSs'],
-    #    'CTX_IT': ['CTX_IT-MOp', 'CTX_IT-MOs', 'CTX_IT-SSp-bfd', 'CTX_IT-SSp-m', 'CTX_IT-SSp-n', 'CTX_IT-SSs', 'CTX_IT-VISp'],
-    #    'TH_core': ['TH_core-LGd', 'TH_core-MG', 'TH_core-SMT', 'TH_core-VPL', 'TH_core-VPLpc', 'TH_core-VPM'],
-    #    'TH_matrix': ['TH_matrix-LP', 'TH_matrix-VM']
-    #}
+    '''
+    type_dict = {
+        'CP': ['CP_GPe-CP', 'CP_SNr-CP'],
+        'CTX_ET': ['CTX_ET-MOp', 'CTX_ET-MOs', 'CTX_ET-RSPv', 'CTX_ET-SSp-bfd', 'CTX_ET-SSp-m', 'CTX_ET-SSp-n', 'CTX_ET-SSp-ul', 'CTX_ET-SSs'],
+        'CTX_IT': ['CTX_IT-MOp', 'CTX_IT-MOs', 'CTX_IT-SSp-bfd', 'CTX_IT-SSp-m', 'CTX_IT-SSp-n', 'CTX_IT-SSs', 'CTX_IT-VISp'],
+        'TH_core': ['TH_core-LGd', 'TH_core-MG', 'TH_core-SMT', 'TH_core-VPL', 'TH_core-VPLpc', 'TH_core-VPM'],
+        'TH_matrix': ['TH_matrix-LP', 'TH_matrix-VM']
+    }
+    '''
     type_dict = {'CTX_ET-SSp-m': ['0_CTX_ET-SSp-m', '1_CTX_ET-SSp-m', '2_CTX_ET-SSp-m']}
 
     #plot_tracts_radii_all(type_dict, 'all', radius_type=1)
-    plot_tracts_radii(type_dict['CTX_ET-SSp-m'], 'CTX_ET-SSp-m', radius_type=1)
+    for key, value in type_dict.items():
+        print(key, value)
+        plot_tracts_radii(value, key, radius_type=1)
  
 
 if 0:    # clustering and divide neurons into sub-types
 
     # params
     mpath_dir = '../main_tracts_types'
+    out_dir = '../CTX_ET-SSp-m-subclasses'
     show_instances = 200
     scale = 1000
 
@@ -462,14 +494,18 @@ if 0:    # clustering and divide neurons into sub-types
             tree = parse_swc(pathfile)
             pts.append(tree[0][2:5])
         pts = np.array(pts) / scale
+        # standardize
+        pts = (pts - pts.mean(axis=0)) / pts.std(axis=0)
 
         # clustering according to terminal points
         kmeans = KMeans(3).fit(pts)
         labels = kmeans.labels_
 
         # copy to file
-        #for pf, l in zip(pathfiles, labels):
-        #    os.system(f'cp {pf} {l}')
+        for pf, l in zip(pathfiles, labels):
+            pfile = os.path.split(pf)[-1]
+            outfile = os.path.join(out_dir, f'{l}_{pfile}')
+            os.system(f'cp {pf} {outfile}')
         
         for i, c in zip(range(3), ['r', 'g', 'b']):
             pts_ = pts[labels == i]

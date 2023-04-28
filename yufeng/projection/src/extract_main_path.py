@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from swc_handler import parse_swc, write_swc, get_specific_neurite, NEURITE_TYPES, scale_swc
+from swc_handler import parse_swc, write_swc, get_specific_neurite, NEURITE_TYPES, scale_swc, flip_swc, find_soma_index
 from morph_topo.morphology import Morphology
 
 sys.path.append('../../common_lib')
@@ -69,8 +69,14 @@ class MainPathValidator(object):
 
 
 class MainPathProjection(object):
-    def __init__(self, swcfile, scale_factor=1.0):
+    def __init__(self, swcfile, scale_factor=1.0, flip_to_left=True):
         tree = parse_swc(swcfile)
+        if flip_to_left:
+            soma_index = find_soma_index(tree)
+            zs = tree[soma_index][4]
+            if zs > 228 * 25.:
+                tree = flip_swc(tree, axis='z', dim=456*25.)
+
         if scale_factor != 1:
             tree = scale_swc(tree, scale_factor)
         self.morph = Morphology(tree)
@@ -107,13 +113,13 @@ class MainPathProjection(object):
             if (node_id in seg_lengths_dict) and (self.morph.pos_dict[node_id][1] in NEURITE_TYPES['axon']):
                 axon_seg_lengths.append(seg_lengths_dict[node_id])
         axon_seg_lengths.sort()
-        print(f'Stat of segment length: ')
-        print(f'   max: {max(axon_seg_lengths)}, min: {min(axon_seg_lengths)}')
+        #print(f'Stat of segment length: ')
+        #print(f'   max: {max(axon_seg_lengths)}, min: {min(axon_seg_lengths)}')
 
         # we can remove only the short segments, and do not care whether some remaining
         k = max(len(axon_seg_lengths) - 2, 0)
         length_thr1 = axon_seg_lengths[k]  # the threshold could be refined
-        print(f'length_thr: {length_thr1}')
+        #print(f'length_thr: {length_thr1}')
         # iterative pruning 
         pruned_path = []
         pruned_len = max_length
@@ -121,13 +127,13 @@ class MainPathProjection(object):
             #print(i, idx)
             if idx in seg_lengths_dict:
                 if seg_lengths_dict[idx] >= length_thr1:
-                    print(seg_lengths_dict[idx])
+                    #print(seg_lengths_dict[idx])
                     pruned_path = longest_path[i:]
                     break
                 else:
                     pruned_len -= seg_lengths_dict[idx]
-                    print(seg_lengths_dict[idx], pruned_len)
-        print(f'Max axonal path length and pruned path length are: {max_length} / {pruned_len}')
+                    #print(seg_lengths_dict[idx], pruned_len)
+        #print(f'Max axonal path length and pruned path length are: {max_length} / {pruned_len}')
         
         pruned_tree = []
         for idx in pruned_path:
@@ -152,60 +158,45 @@ class MainPathProjection(object):
         
         return max_length, pruned_len
 
+def wrapper(swcfile, scale_factor, outswc):
+    print(outswc)
+    mpp = MainPathProjection(swcfile, scale_factor=scale_factor)
+    # check
+    mlen, plen = mpp.extract_main_tract(outswc)
+
 if __name__ == '__main__':
-    #swc_dir = '/PBshare/SEU-ALLEN/Users/ZhixiYun/SDJ_regi/R1741_final'
-    swc_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/1741_All'
+    swc_dir = '/PBshare/SEU-ALLEN/Projects/fullNeurons/V2023_01_10/registration/S3_registered_ccf'
     out_dir = '../main_tracts_types'
     ctype_file = '../../common_lib/41586_2021_3941_MOESM4_ESM.csv'
-    min_files = 10
-    scale_factor = 25.0
+    min_files = 0
+    scale_factor = 1.
   
-    # output file
-    plen_file = '../path_length.txt'
-    imgname_file = '../imgfile_for_each_class.txt'
-    if os.path.exists(plen_file):
-        fout = None
-    else:
-        fout = open(plen_file, 'w')
-
-    fo2 = open(imgname_file, 'w')
-   
     ptypes, rev_ptypes, p2stypes = load_pstype_from_excel(ctype_file)
-    for ctype, files in ptypes.items():
+ 
+    args_list = []   
+    for swcfile in glob.glob(os.path.join(swc_dir, '*')):
+        prefix = os.path.split(swcfile)[-1].split('.swc')[0]
+        if prefix not in rev_ptypes:
+            ctype = 'unk'
+        else:
+            ctype = rev_ptypes[prefix]
+
         if ctype is np.nan:
-            continue
-        assert(isinstance(ctype, str))
-        if len(files) < min_files:
-            continue
+            ctype = 'unk'
 
-        print(ctype, len(files))
-        if fout is not None:
-            fout.write(f'{ctype} ')
-        fo2.write(f'{ctype} ')
-        for prefix in files:
-            print(prefix)
-            brain_id = prefix.split('_')[0]
-            swcfile = glob.glob(os.path.join(swc_dir, f'{prefix}*.swc'))[0]
-            if not os.path.exists(swcfile): continue
+        print(prefix)
+        brain_id = prefix.split('_')[0]
+        outswc = os.path.join(out_dir, f'{ctype}_{prefix}_axonal_tract.swc')
+        args_list.append((swcfile, scale_factor, outswc))
 
-            outswc = os.path.join(out_dir, f'{ctype}_{prefix}_axonal_tract.swc')
-            #if os.path.exists(outswc):
-            #    continue
-            mpp = MainPathProjection(swcfile, scale_factor=scale_factor)
-            # check
-            mlen, plen = mpp.extract_main_tract(outswc)
-            if fout is not None:
-                fout.write(f'{mlen:.2f} {plen:.2f} ')
-            fo2.write(f'{prefix} ')
-
-        if fout is not None:
-            fout.write('\n')
-        fo2.write('\n')
+    # multiprocessing
+    from multiprocessing import Pool
+    pool = Pool(processes=24)
+    pool.starmap(wrapper, args_list)
+    pool.close()
+    pool.join()
         
-        #break   # debug
-    if fout is not None:   
-        fout.close()
-    fo2.close()
-            
+
+        
     
 
