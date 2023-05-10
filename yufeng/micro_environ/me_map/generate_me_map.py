@@ -52,6 +52,8 @@ def process_features(mefile):
     for mf in __MAP_FEATS__:
         mapper[f'{mf}_me'] = mf
     df.rename(columns=mapper, inplace=True)
+    # We would like to use tortuosity, which is  opposite of contraction
+    df.loc[:, 'AverageContraction'] = 1 - df['AverageContraction']
 
     feat_names = [fn for fn in __MAP_FEATS__]
 
@@ -779,13 +781,13 @@ if __name__ == '__main__':
     
 
     #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
-    plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
+    #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
     #colorize_atlas2d_cv2(annot=True, fmt=fmt)
 
-    #sectional_dsmatrix(mefile, 'me_dsmatrix', histeq=False, flip_to_left=True, mode=mode, findex=findex)
+    #sectional_dsmatrix(mefile, 'me_dsmatrix', histeq=True, flip_to_left=True, mode=mode, findex=findex)
     #dsfile = 'me_dsmatrix_mip1.csv'
     #dsfile_histeq = 'me_dsmatrix_mip1_histeq.csv'
     #plot_me_dsmatrix(dsfile, dsfile_histeq, axid=1)
 
-    #feature_evolution_CP_radial(mefile, debug=False)
+    feature_evolution_CP_radial(mefile, debug=False)
     

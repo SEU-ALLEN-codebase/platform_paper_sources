@@ -137,16 +137,19 @@ def aggregate_information(feature_dir, swc_dir):
     print('===> Merge with the features')
     fdim = 22
     features = []
-    for ds in glob.glob(os.path.join(feature_dir, '*')):
-        dname = os.path.split(ds)[-1]
-        for brain_file in glob.glob(os.path.join(ds, '*.txt')):
-            brain_id = os.path.splitext(os.path.split(brain_file)[-1])[0]
+    #for ds in glob.glob(os.path.join(feature_dir, '*')):
+    #    dname = os.path.split(ds)[-1]
+    #    for brain_file in glob.glob(os.path.join(ds, '*.txt')):
+    for brain_file in glob.glob(os.path.join(feature_dir, '*csv')):
+        prefix = os.path.split(brain_file)[-1][:-4]
+        brain_id = prefix.split('_')[-1]
+        dname = '_'.join(prefix.split('_')[-3:-1])
 
-            if DEBUG:
-                if brain_id != '17051': continue
-            print(f'======> parsing feature for {dname}/{brain_id}')
-            brain_features = pd.read_csv(brain_file, index_col=0)
-            features.append(brain_features)
+        if DEBUG:
+            if brain_id != '17051': continue
+        print(f'======> parsing feature for {dname}/{brain_id}')
+        brain_features = pd.read_csv(brain_file, index_col=0)
+        features.append(brain_features)
     features = pd.concat(features, join='inner').astype(np.float)
     # concat with the overall information
     df = df.join(features, how='inner')
@@ -158,8 +161,8 @@ def aggregate_information(feature_dir, swc_dir):
 
 
 if __name__ == '__main__':
-    swc_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/Research/platform/micro_environ/data/improved_reg/42k_local_morphology_gcoord_registered'
-    feature_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/Research/platform/micro_environ/data/original/42k_vaa3d_feature'
+    swc_dir = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/Research/platform/micro_environ/data/improved_reg/42k_local_morphology_new20230510_gcoord_final'
+    feature_dir = './lm_features'
     aggregate_information(feature_dir, swc_dir)
 
     
