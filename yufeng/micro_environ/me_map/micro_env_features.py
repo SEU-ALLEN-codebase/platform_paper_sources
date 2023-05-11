@@ -42,7 +42,7 @@ def get_highquality_subset(feature_file, nodes_range=(500,1500), min_num_recons=
     print(f'Number of samples after nodes pruning: {df.shape[0]}')
     return df
 
-def estimate_radius(lmf, topk=5, percentile=95):
+def estimate_radius(lmf, topk=5, percentile=50):
     spos = lmf[['soma_x', 'soma_y', 'soma_z']]
     topk_d = min_distances_between_two_sets(spos, spos, topk=topk+1, reciprocal=False)
     topk_d = topk_d[:,-1]

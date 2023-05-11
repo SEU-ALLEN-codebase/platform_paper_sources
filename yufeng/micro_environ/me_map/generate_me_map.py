@@ -53,7 +53,7 @@ def process_features(mefile):
         mapper[f'{mf}_me'] = mf
     df.rename(columns=mapper, inplace=True)
     # We would like to use tortuosity, which is  opposite of contraction
-    df.loc[:, 'AverageContraction'] = 1 - df['AverageContraction']
+    #df.loc[:, 'AverageContraction'] = 1 - df['AverageContraction']
 
     feat_names = [fn for fn in __MAP_FEATS__]
 
@@ -90,7 +90,7 @@ def process_mip(mip, mask, sectionX=None, axis=0, figname='temp.png', mode='comp
 
     #if axis==1: cv2.imwrite('temp.png', mip); sys.exit()
     im = np.ones((mip.shape[0], mip.shape[1], 4), dtype=np.uint8) * 255
-    im[~brain_mask2d] = 0#1 # should be 1 for processing
+    im[~brain_mask2d] = 1 # should be 1 for processing
     
     fig, ax = plt.subplots()
     width, height = fig.get_size_inches() * fig.get_dpi()
@@ -304,7 +304,7 @@ def plot_left_right_corr(mefile, outfile, histeq=True, mode='composite', findex=
             if i == 0:
                 #title = ax.get_title().split(' = ')[1]
                 if j == 0:
-                    title = 'Tortuosity'
+                    title = 'Straightness'
                 elif j == 1:
                     title = 'Hausdorff Dimension'
                 elif j == 2:
@@ -521,7 +521,7 @@ def plot_me_dsmatrix(feat_file, feat_file_histeq, axid, min_num_samples=10):
             if label == 'pca_vr3':
                 label = '%Variance PC_3'
             elif label == 'AverageContraction':
-                label = 'Tortuosity'
+                label = 'Straightness'
             elif label == 'HausdorffDimension':
                 label = 'Hausdorff Dimension'
             #lower = cur_data.iloc[:,jj]-cur_data.iloc[:,jj+3]
@@ -765,9 +765,9 @@ if __name__ == '__main__':
     mefile = './data/micro_env_features_nodes300-1500_withoutNorm.csv'
     mapfile = 'microenviron_map'
     flip_to_left = True
-    mode = 'composite'
-    findex = 0
-    fmt = 'svg'
+    mode = 'single'
+    findex = 2
+    fmt = 'png'
 
     '''
     # save outline
@@ -780,14 +780,14 @@ if __name__ == '__main__':
     '''
     
 
-    #generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex)
+    generate_me_maps(mefile, outfile=mapfile, flip_to_left=flip_to_left, mode=mode, findex=findex, fmt=fmt)
     #plot_left_right_corr(mefile, outfile=mapfile, histeq=True, mode='composite', findex=0)
     #colorize_atlas2d_cv2(annot=True, fmt=fmt)
 
-    #sectional_dsmatrix(mefile, 'me_dsmatrix', histeq=True, flip_to_left=True, mode=mode, findex=findex)
+    #sectional_dsmatrix(mefile, 'me_dsmatrix', histeq=False, flip_to_left=True, mode=mode, findex=findex)
     #dsfile = 'me_dsmatrix_mip1.csv'
     #dsfile_histeq = 'me_dsmatrix_mip1_histeq.csv'
     #plot_me_dsmatrix(dsfile, dsfile_histeq, axid=1)
 
-    feature_evolution_CP_radial(mefile, debug=False)
+    #feature_evolution_CP_radial(mefile, debug=False)
     
