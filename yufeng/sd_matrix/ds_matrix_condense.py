@@ -226,7 +226,7 @@ if __name__ == '__main__':
     celltype_file = '../common_lib/41586_2021_3941_MOESM4_ESM.csv'
     feat_files = {
         'microenviron': {
-            'path': '../micro_environ/data/gold_standard_me.csv',
+            'path': '../micro_environ/me_map_new20230510/data/gold_standard_me.csv',
             'feat_names': __FEAT_NAMES__,
             'neuron': 'Cell name'
         },
@@ -258,7 +258,7 @@ if __name__ == '__main__':
         }
     }
 
-    '''
+    
     figname = 'sdmatrix_heatmap_stype_all'
     df = load_cross_scale_features(feat_files, celltype_file)
     calc_dsmatrix_stype(df, figname)
@@ -266,7 +266,8 @@ if __name__ == '__main__':
     calc_dsmatrix_sctype(df, figname)
     figname = 'sdmatrix_heatmap_sptype_all'
     calc_dsmatrix_sptype(df, figname)
-    '''
+    
+    
     
     for type_str in ['stype', 'sctype', 'sptype']:
         print(type_str)

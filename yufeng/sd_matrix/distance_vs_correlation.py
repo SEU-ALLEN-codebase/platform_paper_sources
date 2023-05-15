@@ -286,12 +286,12 @@ if __name__ == '__main__':
     corr_file = './multi-scale/corr_neuronLevel_sdmatrix_heatmap_stype_all.csv'
     celltype_file = '../common_lib/41586_2021_3941_MOESM4_ESM.csv'
 
-    #soma_dist_vs_corr(spos_file, corr_file)
-    #proj_dist_vs_corr(proj_file, corr_file)
-    #soma_proj_dist_vs_corr(spos_file, proj_file, corr_file)
+    soma_dist_vs_corr(spos_file, corr_file)
+    proj_dist_vs_corr(proj_file, corr_file)
+    soma_proj_dist_vs_corr(spos_file, proj_file, corr_file)
     
     #estimate_region_size()
-    estimate_region_projection_size(proj_file, celltype_file)
+    #estimate_region_projection_size(proj_file, celltype_file)
     
 
 

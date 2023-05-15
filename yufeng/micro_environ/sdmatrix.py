@@ -32,8 +32,7 @@ matplotlib.rcParams['font.family'] = "sans-serif"
 
 if 1:
     # DS matrix for stypes (separate and all)
-    nodes = '500-1500'
-    mefeature_file = f'../data/micro_env_features_nodes{nodes}_with_ptype_cstype.csv'
+    mefeature_file = '../me_map_new20230510/data/micro_env_features_nodes300-1500_statis_with_ptype_cstype.csv'
     outdir = '../../sd_matrix/levels'
     normalize = True
     
@@ -59,8 +58,7 @@ if 1:
 
 if 0:
     # DS matrix for ptypes
-    nodes = '500-1500'
-    mefeature_file = f'../data/micro_env_features_nodes{nodes}_with_ptype_cstype.csv'
+    mefeature_file = f'../me_map_new20230510/data/micro_env_features_nodes300-1500_statis_with_ptype_cstype.csv'
     outdir = '../../sd_matrix/levels'
     normalize = True
     
@@ -85,8 +83,7 @@ if 0:
 
 if 0:
     # DS matrix for cstypes
-    nodes = '500-1500'
-    mefeature_file = f'../data/micro_env_features_nodes{nodes}_with_ptype_cstype.csv'
+    mefeature_file = f'../me_map_new20230510/data/micro_env_features_nodes300-1500_statis_with_ptype_cstype.csv'
     outdir = '../../sd_matrix/levels'
     normalize = True
     

@@ -59,7 +59,7 @@ def calc_regional_features(df, out_dir):
 
 
 if __name__ == '__main__':
-    feat_file = '../data/micro_env_features_nodes500-1500_with_ptype_cstype.csv'
+    feat_file = '../me_map_new20230510/data/micro_env_features_nodes300-1500_statis_with_ptype_cstype.csv'
     out_dir = '/home/lyf/Research/cloud_paper/sd_features/data'
 
     df = load_feature(feat_file)

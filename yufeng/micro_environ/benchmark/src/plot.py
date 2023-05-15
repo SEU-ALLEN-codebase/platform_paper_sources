@@ -12,8 +12,10 @@
 
 import numpy as np
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy import stats
 
 
 def load_data(gsfile, reconfile, matchfile, min_nodes=300):
@@ -32,7 +34,7 @@ def load_data(gsfile, reconfile, matchfile, min_nodes=300):
 
     return gsm, reconm
 
-def plot_lmeasure(gsm, reconm, figname='temp.png'):
+def plot_lmeasure_old(gsm, reconm, figname='temp.png'):
     df = pd.concat([gsm, reconm])
     data = ['gs' for i in range(len(gsm))] + ['recon' for i in range(len(reconm))]
     df['data'] = data
@@ -71,9 +73,22 @@ def plot_lmeasure(gsm, reconm, figname='temp.png'):
         if f in [0,12,17]: log=True
 
         axes = fig.add_subplot(h,w,i+1)
-        sns.kdeplot(data=df, x=feature, hue="data",
+        kdp = sns.kdeplot(data=df, x=feature, hue="data",
                     log_scale=log,
-                    bw_adjust=1.0, fill=True, alpha=0.6)
+                    bw_adjust=1.0, fill=False, alpha=0.6)
+        
+        dfs = df[feature]
+        dfs_g = dfs[df.data == 'gs']
+        dfs_r = dfs[df.data == 'recon']
+
+        # chisqure test
+        #stat, p_value = stats.ttest_ind(dfs_g, dfs_r)
+        #print(f'Chi-square Test for {feature}: statistic={stat:.4f}, p-value={p_value}')
+        
+        # Kolmogorov-Smirnov Test
+        stat, p_value = stats.mannwhitneyu(dfs_g, dfs_r, alternative='two-sided')
+        print(f'KS Test for {feature}: statistic={stat:.4f}, p-value={p_value}')
+        
 
         if feature == 'AverageBifurcationAngleLocal':
             title = 'AvgBifAngLocal'
@@ -103,6 +118,48 @@ def plot_lmeasure(gsm, reconm, figname='temp.png'):
     plt.subplots_adjust(wspace=0.16,hspace=0.25)
     plt.savefig(figname, dpi=300)
     
+def plot_lmeasure(gsm, reconm, figname='temp.png'):
+    df = pd.concat([gsm, reconm])
+    data = ['Manual Annotation' for i in range(len(gsm))] + ['Reconstruction' for i in range(len(reconm))]
+    df['data'] = data
+
+    sf = 4
+    df.loc[:,'Surface'] = df.loc[:,'Surface'] / np.power(10,sf)
+
+    t_font = 22
+    l_font = 18
+    font = {'size': t_font}
+    matplotlib.rc('font', **font)
+
+    pfeatures = ['Branches', 'Surface']
+    for pf in pfeatures:
+        fig = plt.figure(figsize=(8,8))
+        #bp = sns.boxplot(data=df, y=pf, x='data', hue='data', 
+        #                 orient='v')
+        kdp = sns.kdeplot(data=df, x=pf, hue="data",
+                    bw_adjust=1.0, fill=True, alpha=0.6)
+        
+        axes = plt.gca()
+        #axes.set_title(pf, fontsize=font)
+        #axes.text(0,2,feature,va='top',ha='center',fontsize=font)
+        axes.spines['top'].set_visible(False)
+        axes.spines['right'].set_visible(False)
+        axes.spines['bottom'].set_linewidth(2)
+        axes.spines['left'].set_linewidth(2)
+        axes.xaxis.set_tick_params(width=2, direction='out')
+        axes.yaxis.set_tick_params(width=2, direction='out')
+
+        if pf == 'Surface':
+            xlabel = f'Surface (x$10^{sf}  voxel^2$)'
+        else:
+            xlabel = 'Number of Branches'
+        axes.set_xlabel(xlabel, fontsize=t_font)
+        axes.set_ylabel('Density', fontsize=t_font)
+        axes.legend_.set_frame_on(False)
+        axes.legend_.set_title('')
+
+        fig.subplots_adjust(left=0.16, bottom=0.16)
+        plt.savefig(f'{figname}_{pf}', dpi=300)
 
 
 if __name__ == '__main__':
@@ -110,7 +167,7 @@ if __name__ == '__main__':
     reconfile = 'lm_weak1854.csv'
     matchfile = 'utils/file_mapping1854.csv'
     min_nodes = -1
-    figname = 'comp_lmeasure.png'
+    figname = 'comp_lmeasure'
 
     gsm, reconm = load_data(gsfile, reconfile, matchfile, min_nodes=min_nodes)
     plot_lmeasure(gsm, reconm, figname)

@@ -24,16 +24,16 @@ __CMP_FEAT_NAMES__ = ['Stems', 'Bifurcations', 'Branches', 'Tips', 'OverallWidth
                       'AverageBifurcationAngleLocal', 'AverageBifurcationAngleRemote', 
                       'HausdorffDimension']
 
-def load_features_me(gs_file, me_file, celltype_file, nodes_range=(500,1500)):
+def load_features(gs_file, me_file, celltype_file, nodes_range=(500,1500)):
     df_gs = pd.read_csv(gs_file, index_col=0)
     df_me = pd.read_csv(me_file, index_col=0)
     df_ct = pd.read_csv(celltype_file, index_col=0)
     
     # filter by node number and region name
-    nmin, nmax = nodes_range
-    df_me = df_me[(df_me['Nodes'] >= nmin) & (df_me['Nodes'] <= nmax)]
+    #nmin, nmax = nodes_range
+    #df_me = df_me[(df_me['Nodes'] >= nmin) & (df_me['Nodes'] <= nmax)]
     # remove reconstructions with nan
-    df_me = df_me[~(df_me.isna().sum(axis=1).astype(np.bool))]
+    #df_me = df_me[~(df_me.isna().sum(axis=1).astype(np.bool))]
     # by regions
     regions = []
     for rs in struct_dict.values():
@@ -51,6 +51,31 @@ def load_features_me(gs_file, me_file, celltype_file, nodes_range=(500,1500)):
 
     # get the subtypes
     assign_subtypes(df_gs, inplace=True)
+
+    return df_gs, df_me
+
+def load_features_microenviron(gs_file, me_file, cell_type, nodes_range=(500,1500)):
+    df_gs = pd.read_csv(gs_file, index_col=0)
+    df_me = pd.read_csv(me_file, index_col=0)
+    df_ct = pd.read_csv(celltype_file, index_col=0)
+    
+    # filter by node number and region name
+    nmin, nmax = nodes_range
+    df_me = df_me[(df_me['Nodes'] >= nmin) & (df_me['Nodes'] <= nmax)]
+    # remove reconstructions with nan
+    df_me = df_me[~(df_me.isna().sum(axis=1).astype(np.bool))]
+    # get the features of me
+    me_keys = [f'{fn}_mean' for fn in __CMP_FEAT_NAMES__]
+    df_me = df_me[['region_name_r316', *me_keys]]
+    mapper = dict(zip(me_keys, __CMP_FEAT_NAMES__))
+    df_me.rename(columns=mapper, inplace=True)
+
+    # merge celltype and gs
+    df_gs = df_gs.merge(df_ct, how='inner', left_on=df_gs.index, right_on='Cell name')
+
+    # normalize
+    normalize_features(df_me, __CMP_FEAT_NAMES__, inplace=True)
+    normalize_features(df_gs, __CMP_FEAT_NAMES__, inplace=True)
 
     return df_gs, df_me
 
@@ -88,17 +113,35 @@ def predict_cstype(df_gs, df_me):
         pdist = distance_matrix(cur_feat, gs_cstype.loc[region])
         cur_cstypes = gs_cstype.loc[region].index[pdist.argmin(axis=1)]
         df_me.iloc[ridx, df_me.shape[-1]-1] = cur_cstypes
+
+def predict_microenviron_gs(df_gs, df_me):
+    print(f'--> Predict ME features for GS')
+    gs_features = df_gs[__CMP_FEAT_NAMES__]
+    me_features = df_me[__CMP_FEAT_NAMES__]
+    pdist = distance_matrix(gs_features, me_features)
+    min_idx = np.argmin(pdist, axis=1)
+    df_gs.loc[:, __CMP_FEAT_NAMES__] = me_features.iloc[min_idx].to_numpy()
+
+    df_gs.to_csv('../me_map_new20230510/data/gold_standard_me.csv')
     
     
 
 if __name__ == '__main__':
     # Surface-related features are inconsistent in Gold standards
     gs_file = '../gs_local/src/lm_gs_dendrite.csv'
-    me_file = '../data/lm_features_d22_all.csv'
+    me_file = '../me_map_new20230510/data/lm_features_d22_15441.csv'
     celltype_file = '../../common_lib/41586_2021_3941_MOESM4_ESM.csv'
     nodes_range = (500, 1500)
-    df_gs, df_me = load_features_me(gs_file, me_file, celltype_file, nodes_range)
-    predict_ptype(df_gs, df_me)
-    predict_cstype(df_gs, df_me)
-    df_me.to_csv('../data/lm_features_with_ptype_cstype.csv')
+    
+    if 0:
+        df_gs, df_me = load_features(gs_file, me_file, celltype_file, nodes_range)
+        predict_ptype(df_gs, df_me)
+        predict_cstype(df_gs, df_me)
+        df_me.to_csv('../me_map_new20230510/data/lm_features_d22_15441_with_ptype_cstype.csv')
+    
+
+    if 1:
+        me_file = '../me_map_new20230510/data/micro_env_features_nodes300-1500_statis.csv'
+        df_gs, df_me = load_features_microenviron(gs_file, me_file, nodes_range)
+        predict_microenviron_gs(df_gs, df_me)
 

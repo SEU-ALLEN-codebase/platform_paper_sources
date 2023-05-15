@@ -150,16 +150,16 @@ class MEFeatures:
         
 
 if __name__ == '__main__':
-    if 0:
+    if 1:
         nodes_range = (500, 1500)
-        feature_file = '../data/lm_features_with_ptype_cstype.csv'
-        mefeature_file = f'../data/micro_env_features_nodes{nodes_range[0]}-{nodes_range[1]}_with_ptype_cstype.csv'
+        feature_file = '../data/lm_features_d22_all.csv'
+        mefeature_file = f'../data/micro_env_features_nodes{nodes_range[0]}-{nodes_range[1]}.csv'
         rmefeature_file = f'{mefeature_file[:-4]}_regional.csv'
         mef = MEFeatures(feature_file)
         mef.calc_micro_env_features(mefeature_file, nodes_range=nodes_range)
         #mef.calc_regional_mefeatures(mefeature_file, rmefeature_file)
 
-    if 1:
+    if 0:
         nodes_range = (300, 1500)
         feature_file = '../data/lm_features_d22_all.csv'
         mefile = f'../data/micro_env_features_nodes{nodes_range[0]}-{nodes_range[1]}_withoutNorm.csv'

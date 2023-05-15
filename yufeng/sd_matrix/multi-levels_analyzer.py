@@ -67,7 +67,7 @@ def calc_ds_similarity_among_levels(data_dir='./levels', type_str='stype', struc
     for artist in g.legend.legendHandles:
         artist.set_edgecolor("1.")
 
-    plt.subplots_adjust(left=0.25, right=0.8, bottom=0.35)
+    plt.subplots_adjust(left=0.28, right=0.8, bottom=0.35)
 
     plt.savefig(f'ds_similarity_{type_str}_{struct}.png', dpi=300)
     plt.close('all')
@@ -357,8 +357,8 @@ def calc_distribution_statistics(data_dir='./levels', type_str='stype'):
 if __name__ == '__main__':
 
     for type_str in ['stype', 'ptype', 'cstype']:
-        #calc_ds_similarity_among_levels(type_str=type_str)
-        #calc_interregional_stereotypy(type_str=type_str)
+        calc_ds_similarity_among_levels(type_str=type_str)
+        calc_interregional_stereotypy(type_str=type_str)
         calc_interregional_stereotypy_ridge_plot(type_str=type_str)
-        #calc_distribution_statistics(type_str=type_str)
+        calc_distribution_statistics(type_str=type_str)
     

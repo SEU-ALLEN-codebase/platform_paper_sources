@@ -64,7 +64,7 @@ if 0:
 
 
 # Heatmap & clustermap of whole-train correlation coefficients
-if 0:
+if 1:
     def mean_clustermap(rmef_hm, figname='temp.png'):
         rmef_hm = rmef_hm.copy()
         brain_structures = rmef_hm.pop('brain_structure')

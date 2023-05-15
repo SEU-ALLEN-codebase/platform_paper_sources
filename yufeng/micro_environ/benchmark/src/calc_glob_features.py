@@ -84,8 +84,8 @@ def calc_global_features_all(swc_dir, outfile, region_file):
     df.to_csv(outfile, float_format='%g', index=False)
 
 if __name__ == '__main__':
-    swc_dir = '../gs_crop'
-    outfile = 'lm_gs.csv'
+    swc_dir = '../recon1891_weak1854'
+    outfile = 'lm_weak1854.csv'
     region_file = '../../../common_lib/41586_2021_3941_MOESM4_ESM.csv'
     
     calc_global_features_all(swc_dir, outfile, region_file)
